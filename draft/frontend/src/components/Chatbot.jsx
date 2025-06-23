@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/api"; // If you have a central api.js, otherwise use axios
@@ -17,10 +17,22 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   const [newChatTitle, setNewChatTitle] = useState("");
   const [userInfo, setUserInfo] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileHover, setFileHover] = useState(false); // <-- Add this
+
+  // FR-26: Ref for auto-scroll to latest message
+  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     if (userId) fetchChats();
   }, [userId]);
+
+  // FR-26: Scroll to bottom when conversation changes
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [conversation]);
 
   const fetchChats = async () => {
     if (!userId) return;
@@ -56,11 +68,23 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !selectedChat) return;
+    if ((!input.trim() && !selectedFile) || !selectedChat) return;
     setLoading(true);
     try {
-        const res = await axios.post(`${API}/api/chatbot`, { message: input });
-        const botResult = res.data;
+        let botResult;
+        if (selectedFile) {
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+            formData.append("message", input);
+            // You need to implement this endpoint in your backend!
+            const res = await axios.post(`${API}/api/chatbot/upload`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            botResult = res.data;
+        } else {
+            const res = await axios.post(`${API}/api/chatbot`, { message: input });
+            botResult = res.data;
+        }
 
         // Save conversation and get conversationId
         const saveRes = await axios.put(`${API}/chats/${selectedChat}/messages`, {
@@ -86,6 +110,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         }
 
         fetchConversation(selectedChat);
+        setSelectedFile(null); // Clear file after sending
         setInput("");
     } catch (err) {
         alert("Something went wrong.");
@@ -130,357 +155,439 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   }
 
   return (
+    <div
+      style={{
+        display: "flex",
+        height: 500,
+        width: 400,
+        background: darkMode ? "#1e1e1e" : "#fff",
+        color: darkMode ? "#e0e0e0" : "#000",
+        borderRadius: 16,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+        overflow: "hidden",
+        flexDirection: "column",
+      }}
+    >
+      {/* Header */}
       <div
-          style={{
-              display: "flex",
-              height: 500,
-              width: 400,
-              background: darkMode ? "#1e1e1e" : "#fff",
-              color: darkMode ? "#e0e0e0" : "#000",
-              borderRadius: 16,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-              overflow: "hidden",
-              flexDirection: "column",
-          }}
+        style={{
+          background: darkMode ? "#333" : "#1976d2",
+          color: "#fff",
+          padding: "0.75rem 1rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
       >
-          {/* Header */}
-          <div
-              style={{
-                  background: darkMode ? "#333" : "#1976d2",
-                  color: "#fff",
-                  padding: "0.75rem 1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-              }}
-          >
-              <span style={{ fontWeight: "bold" }}>
-                  Business Location Chatbot
-              </span>
-              <button
-                  onClick={onClose}
-                  style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "#fff",
-                      fontSize: 24,
-                      cursor: "pointer",
-                      marginLeft: 8,
-                  }}
-                  aria-label="Close Chatbot"
-              >
-                  ×
-              </button>
-          </div>
-          {/* Body */}
-          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-              {/* Collapsible Sidebar */}
-              <div
-                  style={{
-                      width: sidebarOpen ? 120 : 24,
-                      background: darkMode ? "#2b2b2b" : "#f5f5f5",
-                      borderRight: `1px solid ${darkMode ? "#444" : "#e0e0e0"}`,
-                      padding: 8,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                      minWidth: 0,
-                      transition: "width 0.2s",
-                      alignItems: sidebarOpen ? "stretch" : "center",
-                  }}
-              >
-                  {/* Title and Collapse Button in a Row */}
-                  <div
-                      style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: 8,
-                          gap: 4,
-                      }}
-                  >
-                      {sidebarOpen && (
-                          <h4 style={{ margin: 0, fontSize: 14, flex: 1 }}>
-                              Past Chats
-                          </h4>
-                      )}
-                      <button
-                          onClick={() => setSidebarOpen((open) => !open)}
-                          style={{
-                              background: "#1976d2",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: 4,
-                              width: 24,
-                              height: 24,
-                              cursor: "pointer",
-                              fontWeight: "bold",
-                              fontSize: 16,
-                              padding: 0,
-                              marginLeft: sidebarOpen ? 4 : 0,
-                          }}
-                          title={sidebarOpen ? "Collapse" : "Expand"}
-                      >
-                          {sidebarOpen ? "<" : ">"}
-                      </button>
-                  </div>
-                  {sidebarOpen && (
-                      <>
-                          <ul
-                              style={{
-                                  listStyle: "none",
-                                  padding: 0,
-                                  margin: 0,
-                                  flex: 1,
-                                  overflowY: "auto",
-                              }}
-                          >
-                              {chats.map((chat) => (
-                                  <li
-                                      key={chat.chatId}
-                                      style={{
-                                          background:
-                                              selectedChat === chat.chatId
-                                                  ? "#e3f2fd"
-                                                  : "transparent",
-                                          marginBottom: 4,
-                                          padding: 4,
-                                          borderRadius: 6,
-                                          cursor: "pointer",
-                                          display: "flex",
-                                          justifyContent: "space-between",
-                                          alignItems: "center",
-                                          fontSize: 13,
-                                      }}
-                                  >
-                                      <span
-                                          style={{
-                                              flex: 1,
-                                              overflow: "hidden",
-                                              textOverflow: "ellipsis",
-                                              whiteSpace: "nowrap",
-                                          }}
-                                          onClick={() =>
-                                              fetchConversation(chat.chatId)
-                                          }
-                                          title={chat.title}
-                                      >
-                                          {chat.title}
-                                      </span>
-                                      <button
-                                          style={{
-                                              marginLeft: 4,
-                                              color: "#d32f2f",
-                                              background: "none",
-                                              border: "none",
-                                              fontWeight: "bold",
-                                              cursor: "pointer",
-                                          }}
-                                          onClick={() =>
-                                              handleDeleteChat(chat.chatId)
-                                          }
-                                          title="Delete chat"
-                                      >
-                                          ×
-                                      </button>
-                                  </li>
-                              ))}
-                          </ul>
-                          {/* New chat input and button */}
-                          <input
-                              value={newChatTitle}
-                              onChange={(e) => setNewChatTitle(e.target.value)}
-                              placeholder="New chat title"
-                              style={{
-                                  width: "100%",
-                                  marginBottom: 4,
-                                  fontSize: 13,
-                                  padding: "6px 8px",
-                                  borderRadius: 4,
-                                  border: "1px solid #ccc",
-                                  boxSizing: "border-box",
-                              }}
-                          />
-                          <button
-                              onClick={handleCreateChat}
-                              style={{
-                                  width: "100%",
-                                  fontSize: 14,
-                                  padding: "6px 0",
-                                  borderRadius: 4,
-                                  background: "#1976d2",
-                                  color: "#fff",
-                                  border: "none",
-                                  cursor: "pointer",
-                              }}
-                          >
-                              + New Chat
-                          </button>
-                      </>
-                  )}
-              </div>
-              {/* Main: Conversation */}
-              <div
-                  style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      minWidth: 0,
-                  }}
-              >
-                  <div
-                      style={{
-                          flex: 1,
-                          overflowY: "auto",
-                          padding: 12,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 12, // This controls all vertical spacing!
-                      }}
-                  >
-                      {conversation.map((msg, idx) => (
-                          <div key={idx}>
-                              {/* User message */}
-                              <div
-                                  style={{
-                                      display: "flex",
-                                      justifyContent: "flex-end",
-                                  }}
-                              >
-                                  <div
-                                      style={{
-                                          background: "#1976d2",
-                                          color: "#fff",
-                                          borderRadius: "16px 16px 4px 16px",
-                                          padding: "8px 14px",
-                                          maxWidth: 200,
-                                          wordBreak: "break-word",
-                                          whiteSpace: "pre-wrap",
-                                          fontSize: 14,
-                                          boxShadow:
-                                              "0 1px 4px rgba(25, 118, 210, 0.08)",
-                                      }}
-                                  >
-                                      {msg.user_prompt}
-                                  </div>
-                              </div>
-                              {/* Bot message */}
-                              <div
-                                  style={{
-                                      display: "flex",
-                                      justifyContent: "flex-start",
-                                      flexDirection: "column",
-                                  }}
-                              >
-                                  <div
-                                      style={{
-                                          background: darkMode
-                                              ? "#2a2a2a"
-                                              : "#f1f1f1",
-                                          color: darkMode ? "#e0e0e0" : "#222",
-                                          borderRadius: "16px 16px 16px 4px",
-                                          padding: "8px 14px",
-                                          maxWidth: 200,
-                                          wordBreak: "break-word",
-                                          whiteSpace: "pre-wrap",
-                                          fontSize: 14,
-                                          boxShadow:
-                                              "0 1px 4px rgba(0,0,0,0.04)",
-                                      }}
-                                  >
-                                      {(() => {
-                                          try {
-                                              const parsed = JSON.parse(
-                                                  msg.bot_answer
-                                              );
-                                              return (
-                                                  parsed.reason ||
-                                                  parsed.text ||
-                                                  msg.bot_answer
-                                              );
-                                          } catch {
-                                              return msg.bot_answer;
-                                          }
-                                      })()}
-                                  </div>
-                                  {/* Show Recommendations Button */}
-                                  {msg.analysisId && (
-                                      <button
-                                          style={{
-                                              marginTop: 8,
-                                              background: "#1976d2",
-                                              color: "#fff",
-                                              border: "none",
-                                              borderRadius: 4,
-                                              padding: "6px 12px",
-                                              fontSize: 13,
-                                              cursor: "pointer",
-                                              alignSelf: "flex-start",
-                                          }}
-                                          onClick={() =>
-                                              handleShowRecommendations(
-                                                  msg.analysisId
-                                              )
-                                          }
-                                      >
-                                          Show Recommendations on Map
-                                      </button>
-                                  )}
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-                  {/* Input */}
-                  <div
-                      style={{
-                          display: "flex",
-                          gap: 8,
-                          padding: 8,
-                          borderTop: `1px solid ${darkMode ? "#444" : "#eee"}`,
-                          background: darkMode ? "#1a1a1a" : "#fafafa",
-                      }}
-                  >
-                      <textarea
-                          rows={2}
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          placeholder="Type your message..."
-                          style={{
-                              flex: 1,
-                              fontSize: 13,
-                              padding: "6px 8px",
-                              borderRadius: 4,
-                              border: `1px solid ${darkMode ? "#555" : "#ccc"}`,
-                              resize: "none",
-                              boxSizing: "border-box",
-                              background: darkMode ? "#2e2e2e" : "#fff",
-                              color: darkMode ? "#e0e0e0" : "#000",
-                          }}
-                          disabled={!selectedChat}
-                      />
-                      <button
-                          onClick={handleSend}
-                          disabled={loading || !selectedChat}
-                          style={{
-                              minWidth: 100,
-                              fontSize: 14,
-                              padding: "6px 0",
-                              borderRadius: 4,
-                              background: "#1976d2",
-                              color: "#fff",
-                              border: "none",
-                              cursor:
-                                  loading || !selectedChat
-                                      ? "not-allowed"
-                                      : "pointer",
-                          }}
-                      >
-                          {loading ? "Thinking..." : "Send"}
-                      </button>
-                  </div>
-              </div>
-          </div>
+        <span style={{ fontWeight: "bold" }}>
+          Business Location Chatbot
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#fff",
+            fontSize: 24,
+            cursor: "pointer",
+            marginLeft: 8,
+          }}
+          aria-label="Close Chatbot"
+        >
+          ×
+        </button>
       </div>
+      {/* Body */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {/* Collapsible Sidebar */}
+        <div
+          style={{
+            width: sidebarOpen ? 120 : 24,
+            background: darkMode ? "#2b2b2b" : "#f5f5f5",
+            borderRight: `1px solid ${darkMode ? "#444" : "#e0e0e0"}`,
+            padding: 8,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            minWidth: 0,
+            transition: "width 0.2s",
+            alignItems: sidebarOpen ? "stretch" : "center",
+          }}
+        >
+          {/* Title and Collapse Button in a Row */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+              gap: 4,
+            }}
+          >
+            {sidebarOpen && (
+              <h4 style={{ margin: 0, fontSize: 14, flex: 1 }}>
+                Past Chats
+              </h4>
+            )}
+            <button
+              onClick={() => setSidebarOpen((open) => !open)}
+              style={{
+                background: "#1976d2",
+                color: "#fff",
+                border: "none",
+                borderRadius: 4,
+                width: 24,
+                height: 24,
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: 16,
+                padding: 0,
+                marginLeft: sidebarOpen ? 4 : 0,
+              }}
+              title={sidebarOpen ? "Collapse" : "Expand"}
+            >
+              {sidebarOpen ? "<" : ">"}
+            </button>
+          </div>
+          {sidebarOpen && (
+            <>
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  flex: 1,
+                  overflowY: "auto",
+                }}
+              >
+                {chats.map((chat) => (
+                  <li
+                    key={chat.chatId}
+                    style={{
+                      background:
+                        selectedChat === chat.chatId
+                          ? "#e3f2fd"
+                          : "transparent",
+                      marginBottom: 4,
+                      padding: 4,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: 13,
+                    }}
+                  >
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      onClick={() =>
+                        fetchConversation(chat.chatId)
+                      }
+                      title={chat.title}
+                    >
+                      {chat.title}
+                    </span>
+                    <button
+                      style={{
+                        marginLeft: 4,
+                        color: "#d32f2f",
+                        background: "none",
+                        border: "none",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                      }}
+                      onClick={() =>
+                        handleDeleteChat(chat.chatId)
+                      }
+                      title="Delete chat"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {/* New chat input and button */}
+              <input
+                value={newChatTitle}
+                onChange={(e) => setNewChatTitle(e.target.value)}
+                placeholder="New chat title"
+                style={{
+                  width: "100%",
+                  marginBottom: 4,
+                  fontSize: 13,
+                  padding: "6px 8px",
+                  borderRadius: 4,
+                  border: "1px solid #ccc",
+                  boxSizing: "border-box",
+                }}
+              />
+              <button
+                onClick={handleCreateChat}
+                style={{
+                  width: "100%",
+                  fontSize: 14,
+                  padding: "6px 0",
+                  borderRadius: 4,
+                  background: "#1976d2",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                + New Chat
+              </button>
+            </>
+          )}
+        </div>
+        {/* Main: Conversation */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12, // This controls all vertical spacing!
+            }}
+          >
+            {conversation.map((msg, idx) => (
+              <div key={idx}>
+                {/* User message */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "#1976d2",
+                      color: "#fff",
+                      borderRadius: "16px 16px 4px 16px",
+                      padding: "8px 14px",
+                      maxWidth: 200,
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
+                      fontSize: 14,
+                      boxShadow:
+                        "0 1px 4px rgba(25, 118, 210, 0.08)",
+                    }}
+                  >
+                    {msg.user_prompt}
+                  </div>
+                </div>
+                {/* Bot message */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-start",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: darkMode
+                          ? "#2a2a2a"
+                          : "#f1f1f1",
+                      color: darkMode ? "#e0e0e0" : "#222",
+                      borderRadius: "16px 16px 16px 4px",
+                      padding: "8px 14px",
+                      maxWidth: 200,
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
+                      fontSize: 14,
+                      boxShadow:
+                          "0 1px 4px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    {(() => {
+                      try {
+                          const parsed = JSON.parse(
+                              msg.bot_answer
+                          );
+                          return (
+                              parsed.reason ||
+                              parsed.text ||
+                              msg.bot_answer
+                          );
+                      } catch {
+                          return msg.bot_answer;
+                      }
+                  })()}
+                  </div>
+                  {/* Show Recommendations Button */}
+                  {msg.analysisId && (
+                    <button
+                      style={{
+                        marginTop: 8,
+                        background: "#1976d2",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 4,
+                        padding: "6px 12px",
+                        fontSize: 13,
+                        cursor: "pointer",
+                        alignSelf: "flex-start",
+                      }}
+                      onClick={() =>
+                          handleShowRecommendations(
+                              msg.analysisId
+                          )
+                      }
+                    >
+                      Show Recommendations on Map
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {/* FR-26: Scroll target */}
+            <div ref={messagesEndRef} />
+          </div>
+          {/* Input */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              padding: 8,
+              borderTop: `1px solid ${darkMode ? "#444" : "#eee"}`,
+              background: darkMode ? "#1a1a1a" : "#fafafa",
+              flexDirection: "column",
+            }}
+          >
+            {/* File input and preview */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label
+                htmlFor="file-upload"
+                style={{
+                  background: "#1976d2",
+                  color: "#fff",
+                  borderRadius: 4,
+                  padding: "4px 12px",
+                  cursor: selectedChat ? "pointer" : "not-allowed",
+                  fontSize: 13,
+                  border: "none",
+                  opacity: selectedChat ? 1 : 0.6,
+                  transition: "background 0.2s",
+                }}
+              >
+                {selectedFile ? "Change File" : "Attach File"}
+              </label>
+              <input
+                id="file-upload"
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files[0])}
+                style={{ display: "none" }}
+                disabled={!selectedChat}
+              />
+              {/* FR-27: Remove uploaded file before sending, only show × on hover */}
+              {selectedFile && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: darkMode ? "#e0e0e0" : "#333",
+                    background: darkMode ? "#222" : "#eee",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    marginLeft: 4,
+                    maxWidth: 160,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  title={selectedFile.name}
+                >
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      maxWidth: 110,
+                      display: "inline-block",
+                    }}
+                  >
+                    {selectedFile.name}
+                  </span>
+                  <button
+                    onClick={() => setSelectedFile(null)}
+                    style={{
+                      marginLeft: 6,
+                      color: "#d32f2f",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                      fontSize: 13,
+                    }}
+                    title="Remove file"
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </div>
+            {/* Textarea and Send */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <textarea
+                rows={2}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type your message..."
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  padding: "6px 8px",
+                  borderRadius: 4,
+                  border: `1px solid ${darkMode ? "#555" : "#ccc"}`,
+                  resize: "none",
+                  boxSizing: "border-box",
+                  background: darkMode ? "#2e2e2e" : "#fff",
+                  color: darkMode ? "#e0e0e0" : "#000",
+                }}
+                disabled={!selectedChat}
+              />
+              <button
+                onClick={handleSend}
+                disabled={loading || !selectedChat}
+                style={{
+                  minWidth: 100,
+                  fontSize: 14,
+                  padding: "6px 0",
+                  borderRadius: 4,
+                  background: loading || !selectedChat ? "#90caf9" : "#1976d2",
+                  color: "#fff",
+                  border: "none",
+                  cursor:
+                    loading || !selectedChat
+                      ? "not-allowed"
+                      : "pointer",
+                  transition: "background 0.2s",
+                }}
+              >
+                {loading ? "Thinking..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
