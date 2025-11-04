@@ -1,191 +1,470 @@
 import { useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, Navigate, useNavigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
 import Basemap from "./components/Esrimap";
-import PlacesPanel from "./components/PlacesPanel";
 import MapViewComponent from "./components/MapView";
+import Chatbot from "./components/Chatbot";
+import AuthPage from "./components/AuthPage";
+import { signOut } from "firebase/auth";
+import { auth } from "./firebase";
 import "./App.css";
-import axios from "axios";
 import api from "./api/api";
+import AnalysesPage from "./components/Analysis";
+
+
+function ProtectedRoute({ children }) {
+  const { user } = useAuth();
+  return user ? children : <Navigate to="/auth" replace />;
+}
 
 function App() {
-    const [places, setPlaces] = useState([]);
-    const [activeCategory, setActiveCategory] = useState(
-        "4d4b7105d754a06377d81259"
-    );
-    const [selectedPlace, setSelectedPlace] = useState(null);
+  const [places, setPlaces] = useState([]);
+  const [activeCategory, setActiveCategory] = useState("4d4b7105d754a06377d81259");
+    const [recommendedPlace, setRecommendedPlace] = useState(null);
+    const [darkMode, setDarkMode] = useState(false);
 
-    const apiKey =
-        "AAPTxy8BH1VEsoebNVZXo8HurOhukd1E28CYalTpQ2ovQDRMAjTnccKPy00UNDRVFY9ztIq9aC0REycGJGepAJSwmVtTBfKBR7bzv4y4cQxWs8pmVOtqywEIZxJFUzShBJ-gbxFMupHgisPUbDtMh7z_M6hiRlEo-zbHX87ugCtrKsACthqEIwXHN69A1OpyrHBatBXFst8XroSU_-5-VmZ8hMfV_6b1gvWw4ZL7MztKo-U.AT1_uq2IJjly";
 
-      const handlePlacesFound = async (results) => {
-          console.log("Places found:", results.length);
-          console.log("First Result Categories:", results[0]?.categories);
-          
-          // Set places immediately to show something while backend processes
-          setPlaces(results);
+  // New: Handler for recommendations from Chatbot
+  const handleShowRecommendations = (locations, referencePoint) => {
+    setRecommendedPlace({ recommended_locations: locations, reference_point: referencePoint });
+  };
 
-          // Construct simplified objects to send to backend
-          const simplifiedResults = results.map((place) => ({
-              name: place.name,
-              placeId: place.placeId,
-              distance: place.distance,
-              location: place.location,
-              icon: place.icon?.url || null,
-              categories: place.categories?.map((cat) => cat.label) || [],
-          }));
+  const [currentLocationCoordinate, setCurrentLocationCoordinate] =
+      useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [chatbotOpen, setChatbotOpen] = useState(false);
 
-          try {
-              const response = await api.post("/api/process-places", {
-                  places: simplifiedResults,
-              });
+  const apiKey = import.meta.env.VITE_ESRI_API_KEY;
 
-              console.log(
-                  "Filtered + Processed Places:",
-                  response.data.processed
-              );
-              
-              // Only update places if backend returned non-empty results
-              if (response.data.processed && response.data.processed.length > 0) {
-                  setPlaces(response.data.processed);
-              }
-              // Otherwise, keep using the original results (already set above)
-          } catch (error) {
-              console.error("Error sending places to backend:", error);
-              // Original results already set above
-          }
-      };
-        
+  const handleLogout = async () => {
+    await signOut(auth);
+    navigate("/auth");
+  };
 
-    const handleCategoryChange = (category) => {
-        console.log("Category changed to:", category);
-        setActiveCategory(category);
-    };
+  const handlePlacesFound = (results) => {
+    console.log("Places found:", results.length);
+    setPlaces(results);
+  };
 
-    const handlePlaceSelect = (place) => {
-        console.log("Selected place:", place);
-      setSelectedPlace(place);
-    };
+  const handleCategoryChange = (category) => {
+    setActiveCategory(category);
+  };
 
-    return (
-        <Router>
-            <nav style={{ padding: "1rem", backgroundColor: "#eee" }}>
-                <Link to="/basemap" style={{ marginRight: "1rem" }}>
-                    Basemap
-                </Link>
-                <Link to="/map">Places Services</Link>
-            </nav>
+  const handlePlaceSelect = (place) => {
+    setPlaces([place]);
+  };
+  
 
-            <Routes>
-                <Route path="/basemap" element={<Basemap />} />
+  const handleChatbotResult = async ({ location, category, radius, nearbyMe, chatId, userId, conversationId }) => {
+    console.log("Chatbot result received:", {
+      location,
+      category,
+      radius,
+      nearbyMe,
+      chatId,
+      userId,
+    });
+  
+    let resolvedLocation = currentLocation;
+  
+    if (nearbyMe) {
+      console.log("Fetching current location...");
+  
+      try {
+        console.log("Requesting geolocation...");
+        const coord = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (position) =>
+                    resolve({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        address: position.coords.address || "Current Location",
+                    }),
+                (error) => reject(error),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+        console.log("Geolocation received:", coord);
+  
+        if (
+          typeof coord?.latitude === "number" &&
+          typeof coord?.longitude === "number"
+        ) {
+          resolvedLocation = {
+            lat: coord.latitude,
+            lon: coord.longitude,
+            address: coord.address
+          };
+          console.log("Resolved current location:", resolvedLocation);
+  
+          // These setters won't update state immediately, but we use resolvedLocation directly
+          setCurrentLocationCoordinate(coord);
+          setCurrentLocation(resolvedLocation);
+  
+          console.log("Using current location:", resolvedLocation);
+        } else {
+          console.warn("Invalid coordinates received:", coord);
+          return;
+        }
+      } catch (error) {
+        console.error("Geolocation error:", error.message);
+        alert("Failed to access your location.");
+        return;
+      }
+    }
+  
+    if (!resolvedLocation && nearbyMe) {
+      console.warn("No valid location available after geolocation.");
+      return;
+    }
+  
+    try {
+      console.log("Calling suitability API with:", {
+        locationName: location,
+        category,
+        radius,
+        currentLocation: resolvedLocation,
+        nearbyMe,
+      });
+  
+      const res = await api.post("/api/suitability", {
+        locationName: location,
+        category,
+        radius,
+        currentLocation: resolvedLocation,
+        nearbyMe,
+        chatId,
+        userId,
+        conversationId, // <-- Pass it here!
+      });
+  
+      const results = res.data || [];
+      console.log("Recommended places:", results);
+      setRecommendedPlace(results);
+    } catch (err) {
+      console.error("Error calling suitability API:", err);
+      alert("Could not fetch recommended locations.");
+    }
 
-                <Route
-                    path="/map"
-                    element={
-                        <div
-                            className="app-container"
-                            style={{ display: "flex", height: "100vh" }}
-                        >
-                            <div
-                                className="sidebar"
-                                style={{
-                                    width: "300px",
-                                    overflowY: "auto",
-                                    borderRight: "1px solid #ccc",
-                                }}
-                            >
-                                <PlacesPanel
-                                    places={places}
-                                    selectedPlace={selectedPlace}
-                                    onPlaceSelect={handlePlaceSelect}
-                                    onCategoryChange={handleCategoryChange}
-                                />
-                            </div>
-                            <div className="map-container" style={{ flex: 1 }}>
-                                <MapViewComponent
-                                    activeCategory={activeCategory}
-                                    onPlacesFound={handlePlacesFound}
-                                    onPlaceSelect={handlePlaceSelect}
-                                    apiKey={apiKey}
-                                />
-                            </div>
-                        </div>
-                    }
-                />
+  };
+  
 
-                <Route
-                    path="*"
-                    element={
-                        <div style={{ padding: "1rem" }}>
-                            <h2>Welcome! Please select a view:</h2>
-                            <ul>
-                                <li>
-                                    <Link to="/basemap">Basemap</Link>
-                                </li>
-                                <li>
-                                    <Link to="/map">Places Services</Link>
-                                </li>
-                            </ul>
-                        </div>
-                    }
-                />
-            </Routes>
-        </Router>
-    );
+  return (
+      <>
+          <div className={darkMode ? "dark" : ""}>
+              <nav className="bg-white dark:bg-neutral-900 text-black dark:text-white shadow-md px-8 py-4 flex justify-between items-center">
+                  {/* Left Side: Logo + Links */}
+                  <div
+                      style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2rem",
+                      }}
+                  >
+                      <span
+                          style={{
+                              fontWeight: 700,
+                              fontSize: 22,
+                              color: "#1976d2",
+                              letterSpacing: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                          }}
+                      >
+                          <svg
+                              width="28"
+                              height="28"
+                              fill="#1976d2"
+                              viewBox="0 0 24 24"
+                          >
+                              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z" />
+                          </svg>
+                          NiagaMap
+                      </span>
+
+                      {user && (
+                          <>
+                              <Link
+                                  to="/map"
+                                  style={{
+                                      color: "#1976d2",
+                                      fontWeight: 500,
+                                      textDecoration: "none",
+                                      padding: "8px 16px",
+                                      borderRadius: 6,
+                                      transition: "background 0.2s",
+                                  }}
+                                  onMouseOver={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "#f0f7ff")
+                                  }
+                                  onMouseOut={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "transparent")
+                                  }
+                              >
+                                  Places Services
+                              </Link>
+                              <Link
+                                  to="/basemap"
+                                  style={{
+                                      color: "#1976d2",
+                                      fontWeight: 500,
+                                      textDecoration: "none",
+                                      padding: "8px 16px",
+                                      borderRadius: 6,
+                                      transition: "background 0.2s",
+                                  }}
+                                  onMouseOver={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "#f0f7ff")
+                                  }
+                                  onMouseOut={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "transparent")
+                                  }
+                              >
+                                  Basemap
+                              </Link>
+                              <Link
+                                  to="/analysis"
+                                  style={{
+                                      color: "#1976d2",
+                                      fontWeight: 500,
+                                      textDecoration: "none",
+                                      padding: "8px 16px",
+                                      borderRadius: 6,
+                                      transition: "background 0.2s",
+                                  }}
+                                  onMouseOver={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "#f0f7ff")
+                                  }
+                                  onMouseOut={(e) =>
+                                      (e.currentTarget.style.background =
+                                          "transparent")
+                                  }
+                              >
+                                  Analysis
+                              </Link>
+                          </>
+                      )}
+                  </div>
+
+                  <div
+                      style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2rem",
+                      }}
+                  >
+                      {/* Right Side: Dark Mode Toggle */}
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                          <span style={{ marginRight: 8, fontSize: 18 }}>
+                              ☀️
+                          </span>
+                          <div
+                              onClick={() => setDarkMode(!darkMode)}
+                              style={{
+                                  width: 60,
+                                  height: 30,
+                                  background: darkMode ? "#444" : "#ccc",
+                                  borderRadius: 9999,
+                                  position: "relative",
+                                  cursor: "pointer",
+                                  transition: "background 0.3s",
+                              }}
+                          >
+                              <div
+                                  style={{
+                                      width: 26,
+                                      height: 26,
+                                      background: darkMode ? "#fff" : "#000",
+                                      borderRadius: "50%",
+                                      position: "absolute",
+                                      top: 2,
+                                      left: darkMode ? 32 : 2,
+                                      transition: "left 0.25s",
+                                  }}
+                              />
+                          </div>
+                          <span style={{ marginLeft: 8, fontSize: 18 }}>
+                              🌙
+                          </span>
+                      </div>
+                      {user && (
+                          <button
+                              onClick={handleLogout}
+                              className="ml-4 px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 dark:text-white"
+                              onMouseOver={(e) =>
+                                  (e.currentTarget.style.background = "#d32f2f")
+                              }
+                              onMouseOut={(e) =>
+                                  (e.currentTarget.style.background = "#f44336")
+                              }
+                          >
+                              Logout
+                          </button>
+                      )}
+                  </div>
+              </nav>
+
+              <Routes>
+                  {/* Default route redirects to auth page */}
+                  <Route path="/" element={<Navigate to="/auth" replace />} />
+
+                  {/* Auth login/signup */}
+                  <Route
+                      path="/auth"
+                      element={<AuthPage darkMode={darkMode} />}
+                  />
+
+                  {/* Protected routes */}
+                  <Route
+                      path="/map"
+                      element={
+                          <ProtectedRoute>
+                              <div
+                                  className="app-container"
+                                  style={{
+                                      height: "100vh",
+                                      width: "100vw",
+                                      position: "relative",
+                                  }}
+                              >
+                                  {/* Remove sidebar */}
+                                  <div
+                                      className="map-container"
+                                      style={{ flex: 1, height: "100vh" }}
+                                  >
+                                      <MapViewComponent
+                                          activeCategory={activeCategory}
+                                          onPlacesFound={handlePlacesFound}
+                                          onPlaceSelect={handlePlaceSelect}
+                                          recommendedPlace={recommendedPlace}
+                                          currentLocationCoordinate={
+                                              currentLocationCoordinate
+                                          }
+                                          apiKey={apiKey}
+                                          darkMode={darkMode}
+                                      />
+                                  </div>
+                                  {/* Floating Chatbot Button */}
+                                  {!chatbotOpen && (
+                                      <button
+                                          onClick={() => setChatbotOpen(true)}
+                                          style={{
+                                              position: "fixed",
+                                              bottom: 32,
+                                              right: 32,
+                                              zIndex: 1001,
+                                              borderRadius: "50%",
+                                              width: 64,
+                                              height: 64,
+                                              background: "#1976d2",
+                                              color: "#fff",
+                                              fontSize: 32,
+                                              border: "none",
+                                              boxShadow:
+                                                  "0 4px 16px rgba(0,0,0,0.2)",
+                                              cursor: "pointer",
+                                          }}
+                                          aria-label="Open Chatbot"
+                                      >
+                                          💬
+                                      </button>
+                                  )}
+                                  {/* Floating Chatbot Panel */}
+                                  {chatbotOpen && (
+                                      <div
+                                          style={{
+                                              position: "fixed",
+                                              bottom: 32,
+                                              right: 32,
+                                              width: 400,
+                                              maxWidth: "90vw",
+                                              height: 520,
+                                              background: "#fff",
+                                              borderRadius: 16,
+                                              boxShadow:
+                                                  "0 8px 32px rgba(0,0,0,0.25)",
+                                              zIndex: 1002,
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              overflow: "hidden",
+                                              animation: "fadeInUp 0.3s",
+                                          }}
+                                      >
+                                          <div
+                                              style={{
+                                                  flex: 1,
+                                                  overflow: "auto",
+                                                  //add dark mode styling
+                                                  background: darkMode
+                                                      ? "#1e1e1e"
+                                                      : "#fff",
+                                                  color: darkMode
+                                                      ? "#e0e0e0"
+                                                      : "#000",
+                                              }}
+                                          >
+                                              <Chatbot
+                                                  onExtracted={
+                                                      handleChatbotResult
+                                                  }
+                                                  onClose={() =>
+                                                      setChatbotOpen(false)
+                                                  }
+                                                  onShowRecommendations={
+                                                      handleShowRecommendations
+                                                  }
+                                                  darkMode={darkMode}
+                                              />
+                                          </div>
+                                      </div>
+                                  )}
+                              </div>
+                          </ProtectedRoute>
+                      }
+                  />
+
+                  <Route
+                      path="/basemap"
+                      element={
+                          <ProtectedRoute>
+                              <Basemap />
+                          </ProtectedRoute>
+                      }
+                  />
+
+                  <Route
+                      path="/analysis"
+                      element={
+                          <ProtectedRoute>
+                              <AnalysesPage darkMode={darkMode} />
+                          </ProtectedRoute>
+                      }
+                  />
+
+                  {/* Any other path redirects to auth */}
+                  <Route path="*" element={<Navigate to="/auth" replace />} />
+              </Routes>
+
+              {/* Add fadeInUp animation */}
+              <style>
+                  {`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(40px);}
+          to { opacity: 1; transform: translateY(0);}
+        }
+        `}
+              </style>
+          </div>
+      </>
+  );
 }
 
 export default App;
-
-// import React, { useState } from "react";
-// import MapViewComponent from "./components/MapView";
-// import PlacesPanel from "./components/PlacesPanel";
-// import "./App.css";
-
-// function App() {
-//     const [places, setPlaces] = useState([]);
-//     const [activeCategory, setActiveCategory] = useState(
-//         "4d4b7105d754a06377d81259"
-//     );
-//     const [selectedPlace, setSelectedPlace] = useState(null);
-
-//     // Your ArcGIS API key
-//     const apiKey =
-//         "AAPTxy8BH1VEsoebNVZXo8HurOhukd1E28CYalTpQ2ovQDRMAjTnccKPy00UNDRVFY9ztIq9aC0REycGJGepAJSwmVtTBfKBR7bzv4y4cQxWs8pmVOtqywEIZxJFUzShBJ-gbxFMupHgisPUbDtMh7z_M6hiRlEo-zbHX87ugCtrKsACthqEIwXHN69A1OpyrHBatBXFst8XroSU_-5-VmZ8hMfV_6b1gvWw4ZL7MztKo-U.AT1_uq2IJjly";
-
-//     const handlePlacesFound = (results) => {
-//         console.log("Places found:", results.length);
-//         setPlaces(results);
-//     };
-
-//     const handleCategoryChange = (category) => {
-//         console.log("Category changed to:", category);
-//         setActiveCategory(category);
-//     };
-
-//     const handlePlaceSelect = (place) => {
-//         console.log("Selected place:", place);
-//         setSelectedPlace(place);
-//     };
-
-//     return (
-//         <div className="app-container">
-//             <div className="sidebar">
-//                 <PlacesPanel
-//                     places={places}
-//                     selectedPlace={selectedPlace}
-//                     onPlaceSelect={handlePlaceSelect}
-//                     onCategoryChange={handleCategoryChange}
-//                 />
-//             </div>
-//             <div className="map-container">
-//                 <MapViewComponent
-//                     activeCategory={activeCategory}
-//                     onPlacesFound={handlePlacesFound}
-//                     onPlaceSelect={handlePlaceSelect}
-//                     apiKey={apiKey}
-//                 />
-//             </div>
-//         </div>
-//     );
-// }
-
-// export default App;

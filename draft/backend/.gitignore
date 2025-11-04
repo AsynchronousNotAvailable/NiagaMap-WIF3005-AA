@@ -7,10 +7,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependency directories
 node_modules
+fyp-gis-24a89-firebase-adminsdk-fbsvc-faa0396f47.json
+
+# Build output
 dist
 dist-ssr
+
+# Local environment
 *.local
+
+# Environment files
+.env
+.env.*            # e.g. .env.development, .env.production, etc.
+!.env.example     # Keep an example env file in version control
 
 # Editor directories and files
 .vscode/*
