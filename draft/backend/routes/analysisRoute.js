@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
@@ -6,6 +7,7 @@ const {
     updateAnalysisReferencePoint,
     deleteAnalysis,
 } = require("../services/analysisService");
+const catchmentController = require('../controllers/catchmentController');
 
 router.get("/analysis/:userId", async (req, res) => {
     const { userId } = req.params;
@@ -77,6 +79,39 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
         res.json({ locations: result.recordset, referencePoint: refPointResult.recordset[0] });
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch recommendations" });
+    }
+});
+
+// POST /analysis/catchment
+// body: { radius, center_x, center_y, category, maxCount?, returnResponses? }
+router.post('/analysis/catchment', async (req, res) => {
+    const { radius, center_x, center_y, category, maxCount, returnResponses } = req.body;
+
+    if (radius == null || center_x == null || center_y == null) {
+        return res.status(400).json({ error: 'radius, center_x and center_y are required in the request body' });
+    }
+
+    // Token can be provided via Authorization header (Bearer ...) or from environment variables.
+    // Prefer Authorization header if present (safer for per-request overrides), otherwise use env.
+    const authHeader = req.get('authorization') || req.get('Authorization') || '';
+    let token = null;
+    if (authHeader && typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+        token = authHeader.slice(7).trim();
+    }
+    if (!token) {
+        token = process.env.ARC_API_KEY || null;
+    }
+
+    if (!token) {
+        return res.status(400).json({ error: 'ArcGIS token is required. Set ARC_API_KEY in the backend environment or provide a Bearer token in Authorization header.' });
+    }
+
+    try {
+        const result = await catchmentController.runCatchment({ radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token, maxCount, returnResponses });
+        res.status(200).json(result);
+    } catch (err) {
+        console.error('Catchment processing failed:', err);
+        res.status(500).json({ error: 'Catchment processing failed', detail: String(err) });
     }
 });
 
