@@ -8,6 +8,7 @@ const {
     deleteAnalysis,
 } = require("../services/analysisService");
 const catchmentController = require('../controllers/catchmentController');
+const poiController = require('../controllers/poiController');
 
 router.get("/analysis/:userId", async (req, res) => {
     const { userId } = req.params;
@@ -115,4 +116,35 @@ router.post('/analysis/catchment', async (req, res) => {
     }
 });
 
+// POST /analysis/pois
+// body: { hexagons? (3d array), radius?, center_x?, center_y?, category? }
+router.post('/analysis/pois', async (req, res) => {
+    const { hexagons, radius, center_x, center_y, category, maxCount } = req.body || {};
+
+    // Token can be provided via Authorization header (Bearer ...) or from environment variables.
+    const authHeader = req.get('authorization') || req.get('Authorization') || '';
+    let token = null;
+    if (authHeader && typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+        token = authHeader.slice(7).trim();
+    }
+    if (!token) {
+        token =
+            process.env.ARC_API_KEY ||
+            null;
+    }
+
+    if (!token) {
+        return res.status(400).json({ error: 'ArcGIS Places API token is required. Set ARC_API_KEY/ARC_TOKEN in env or provide Authorization: Bearer <token>' });
+    }
+
+    try {
+        const result = await poiController.runPOIScoring({ hexagons, radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token, maxCount });
+        res.status(200).json(result);
+    } catch (err) {
+        console.error('POI scoring failed:', err);
+        res.status(500).json({ error: 'POI scoring failed', detail: String(err) });
+    }
+});
+
 module.exports = router;
+

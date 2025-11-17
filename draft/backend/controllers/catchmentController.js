@@ -7,6 +7,7 @@ const demandService = require('../services/demandService');
  * @returns {Object} { hexagons, pops: [], demandScores: [], settings }
  */
 async function runCatchment(opts = {}) {
+    //category should be "Sports", "Retail", "FnB", "Automotive", "Health"
     const { radius, center_x, center_y, category, token, maxCount = null, returnResponses = false } = opts;
 
     if (![radius, center_x, center_y].every(n => Number.isFinite(Number(n)))) {
