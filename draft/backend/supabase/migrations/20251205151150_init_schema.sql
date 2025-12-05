@@ -206,7 +206,7 @@ CREATE TABLE public.risk (
 -- FAVOURITE TABLE (User saved Analyses)
 -- ================================
 
-CREATE TABLE public.favourite (
+CREATE TABLE public.favourites (
     favourite_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL,
     analysis_id uuid NOT NULL,

@@ -10,11 +10,14 @@ const conversationRoutes = require("./routes/conversationRoutes");
 const authRoutes = require("./routes/auth");
 const chatbotRoute = require("./routes/chatbot");
 const analysisRoute = require("./routes/analysisRoute");
-
+const favouriteRoutes = require("./routes/favouriteRoutes");
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+try {
+    const supabase = require("./supabase/supabase_client");
+} catch (err) {
+    console.error("Error initializing Supabase client:", err);
+    process.exit(1);
+}
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -34,6 +37,8 @@ app.use("/users", userRoutes);
 app.use("/chats", chatRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/auth", authRoutes);
+app.use("/favourites", favouriteRoutes);
+
 app.use(chatbotRoute);
 app.use(analysisRoute);
 
