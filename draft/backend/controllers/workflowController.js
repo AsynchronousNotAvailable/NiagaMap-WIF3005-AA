@@ -70,6 +70,10 @@ async function runWorkflow(opts = {}) {
     const [demandRes, poiRes, riskRes, zoningRes, accessibilityRes] = await Promise.allSettled([demandPromise, poiPromise, riskPromise, zoningPromise, accessibilityPromise]);
 
     console.log('demandRes:', demandRes);
+    console.log('poiRes:', poiRes);
+    console.log('riskRes:', riskRes);
+    console.log('zoningRes:', zoningRes);
+    console.log('accessibilityRes:', accessibilityRes);
     // Helper to convert settled result to array or null
     const extractResultArray = (settled, keyFallback) => {
         if (!settled) return null;

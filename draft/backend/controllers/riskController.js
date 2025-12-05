@@ -21,7 +21,7 @@ async function runRiskAnalysis(opts = {}) {
     const tokenToUse = null; // riskService will generate server-side token as needed
 
     // determine riskRatio: prefer incoming opts.riskRatio, then category settings, then default in riskService
-    const ratioVal = Number.isFinite(Number(riskRatio)) ? Number(riskRatio) : (settings && Number.isFinite(Number(settings.riskRatio)) ? Number(settings.riskRatio) : null);
+    // const ratioVal = Number.isFinite(Number(riskRatio)) ? Number(riskRatio) : (settings && Number.isFinite(Number(settings.riskRatio)) ? Number(settings.riskRatio) : null);
 
     const scores = await riskService.computeFloodRiskScores(limitedHexagons, category, tokenToUse, {
         sideLengthMeters: settings.sideLength,
@@ -30,7 +30,7 @@ async function runRiskAnalysis(opts = {}) {
         landslideFeatureUrl: process.env.LANDSLIDE_FEATURE_URL,
         landslideThreshold: settings.landslideRiskThreshold,
         delayMs: settings.delayMs,
-        riskRatio: ratioVal
+        riskRatio: settings.riskRatio
     });
 
     const rawResponses = scores.map(s => s.rawResponse || null);
