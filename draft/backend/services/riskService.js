@@ -1,6 +1,6 @@
 const axios = require('axios');
 const arcgisAuth = require('../api/arcgisAuth');
-
+const supabase = require("../supabase/supabase_client"); // adjust your path
 /**
  * Compute centroid for a polygon represented as [[lon,lat],...]
  */
@@ -248,7 +248,7 @@ async function computeFloodRiskScores(hexagons = [], category = '', token = null
     }
 
     for (let i = 0; i < hexagons.length; i++) {
-        const hex = hexagons[i];
+        const hex = hexagons[i].coordinates;
         const centroid = polygonCentroid(hex) || { lon: null, lat: null };
         let floodAreaHa = null;
         let rawResponse = null;
@@ -319,15 +319,55 @@ async function computeFloodRiskScores(hexagons = [], category = '', token = null
         const riskRatio = ratioVal;
 
         // build a structured rawResponse containing separate flood and landslide payloads
-        const structuredRaw = {
-            flood: maskRawRequest(rawResponse && typeof rawResponse === 'object' ? rawResponse : (rawResponse ? rawResponse : null)),
-            landslide: maskRawRequest(landslideRaw && typeof landslideRaw === 'object' ? landslideRaw : (landslideRaw ? landslideRaw : null))
-        };
+        // const structuredRaw = {
+        //     flood: maskRawRequest(rawResponse && typeof rawResponse === 'object' ? rawResponse : (rawResponse ? rawResponse : null)),
+        //     landslide: maskRawRequest(landslideRaw && typeof landslideRaw === 'object' ? landslideRaw : (landslideRaw ? landslideRaw : null))
+        // };
 
-        out.push({ centroid, floodAreaHa, landslideCount, hexAreaHa, coverage, floodScore, landslideScore, riskRatio, score, isFlooded: !!isFlooded, hasLandslide: !!landslidePresent, rawResponse: structuredRaw });
+        out.push({
+            centroid,
+            floodAreaHa,
+            landslideCount,
+            hexAreaHa,
+            coverage,
+            floodScore,
+            landslideScore,
+            riskRatio,
+            score,
+            isFlooded: !!isFlooded,
+            hasLandslide: !!landslidePresent,
+            // rawResponse: structuredRaw,
+        });
     }
 
     return out;
 }
 
-module.exports = { computeFloodRiskScores };
+
+async function saveRiskScoresToDatabase(riskScores, hex_id_array) {
+    console.log("Saving risk scores to database...", {
+        riskScores: riskScores,
+        hex_id_array,
+    });
+
+    try {
+        await supabase.from("risk").upsert(
+            hex_id_array.map((hex_id, index) => {
+                const r = riskScores[index]; // safely access
+                console.log("r:", r);
+                return {
+                    hex_id,
+                    risk_ratio: Number(r.riskRatio) ?? null,
+                    flood_score: Number(r.floodScore) ?? null,
+                    landslide_score: Number(r.landslideScore) ?? null,
+                    total_score: Number(r.score) ?? null,
+                };
+            })
+        );
+    } catch (error) {
+        console.error("Error saving risk scores to database:", error);
+        throw error;
+    }
+}
+
+module.exports = { computeFloodRiskScores, saveRiskScoresToDatabase };

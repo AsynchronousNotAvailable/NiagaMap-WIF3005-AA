@@ -19,34 +19,40 @@ function polygonCentroid(ring) {
  * If `hexagons` is not provided, this controller will generate them using center_x/center_y/radius and category settings.
  */
 async function runDemand(opts = {}) {
-    const { hexagons, radius, center_x, center_y, category, token, maxCount = null, returnResponses = false } = opts;
+    const { settings, hexagons, radius = 200, token, } = opts;
 
-    const settings = catchmentService.getSettingsForCategory(category);
-    const hexList = hexagons;
 
-    if (!Array.isArray(hexList) || hexList.length === 0) {
+    if (!Array.isArray(hexagons) || hexagons.length === 0) {
         throw new Error('`hexagons` must be provided as an array of rings to compute demand (generation is handled by workflow)');
     }
-
-    // Optionally limit count
-    const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount))) ? hexList.slice(0, Number(maxCount)) : hexList;
-
+   
     // Fetch population values for hexagons
-    const { pops_array, rawResponses } = await demandService.fetchPopulationsForHexagons(limitedHexagons, token, { returnResponses, country: settings.country, dataCollections: settings.dataCollections, retry: settings.retry, delayMs: settings.delayMs });
-    console.log(`Fetched populations for ${pops_array.length} hexagons`, rawResponses);
+    const { pops_array, rawResponses } = await demandService.fetchPopulationsForHexagons(hexagons, token, { country: settings.country, dataCollections: settings.dataCollections, retry: settings.retry, delayMs: settings.delayMs });
+   
     // Calculate demand scores
     const demandScores = demandService.calculateDemandScore(pops_array, radius, settings.baseMaxPerKm2);
-    console.log(`Calculated demand scores`, demandScores);
-    const centroids = limitedHexagons.map(h => polygonCentroid(h));
+
+    // const centroids = limitedHexagons.map(h => polygonCentroid(h));
+
+    try {
+        await demandService.saveDemandScoresToDatabase(
+            hexagons,
+            demandScores,
+            pops_array
+        );
+    }
+    catch (error) {
+        console.error('Error saving demand scores to database:', error);
+    }
 
     return {
-        hexagons: limitedHexagons,
-        centroids,
+        // hexagons: limitedHexagons,
+        // centroids,
         pops: pops_array,
-        numberOfHexagons: limitedHexagons.length,
-        rawResponses: rawResponses,
+        numberOfHexagons: hexagons.length,
+        // rawResponses: rawResponses,
         demandScore: demandScores,
-        settings: settings
+        settings: settings,
     };
 }
 

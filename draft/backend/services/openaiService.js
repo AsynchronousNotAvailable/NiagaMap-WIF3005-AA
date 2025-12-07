@@ -106,7 +106,7 @@ Always return a clean, parsable JSON object.
     ],
     temperature: 0.2,
   });
-  console.log("Chatbot response:", response.choices[0].message.content);
+  
   return response.choices[0].message.content;
 }
 

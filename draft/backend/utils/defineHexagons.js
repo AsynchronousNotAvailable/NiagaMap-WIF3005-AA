@@ -77,7 +77,6 @@ function generateHexagonsCoordinates(center_x, center_y, radius, side_length) {
  * @param {Object} [opts] - optional settings: {country: 'MY', dataCollections: ['KeyFacts']}
  */
 async function fetchGeoEnrichmentForHex(rings, token, opts = {}) {
-    const endpoint = 'https://geoenrich.arcgis.com/arcgis/rest/services/World/geoenrichmentserver/GeoEnrichment/enrich';
     const country = opts.country || 'MY';
     const dataCollections = opts.dataCollections || ['KeyFacts'];
 
@@ -167,12 +166,11 @@ async function enrichHexagons(hexagonArray, options = {}) {
     const token = options.token;
     const retry = options.retry == null ? 2 : options.retry;
     const delayMs = options.delayMs == null ? 250 : options.delayMs;
-    const returnResponses = options.returnResponses || false; // if true, return full response objects
     const maxCount = options.maxCount == null ? hexagonArray.length : Math.max(0, Math.floor(options.maxCount));
     const out = [];
 
     for (let idx = 0; idx < Math.min(hexagonArray.length, maxCount); idx++) {
-        const hex = hexagonArray[idx];
+        const hex = hexagonArray[idx].coordinates;
         // Ensure format: array of [lon, lat] pairs
         const rings = hex.map(p => [Number(p[0]), Number(p[1])]);
 
@@ -182,10 +180,15 @@ async function enrichHexagons(hexagonArray, options = {}) {
             try {
                 const resp = await fetchGeoEnrichmentForHex(rings, token, { country: options.country, dataCollections: options.dataCollections });
                 const pop = extractTOTPOP_CY(resp);
-                if (returnResponses) {
-                    out.push({ pop, response: resp });
+                if (pop !== null) {
+                    console.log(`Enriched hexagon ${idx + 1}/${hexagonArray.length}: TOTPOP_CY = ${pop}`, resp);
+                    out.push({
+                        pop: pop,
+                        response: resp,
+                        hex_id: hexagonArray[idx].hex_id,
+                    });
                 } else {
-                    out.push(pop);
+                    out.push(null);
                 }
                 break;
             } catch (err) {
@@ -193,8 +196,7 @@ async function enrichHexagons(hexagonArray, options = {}) {
                 attempt++;
                 if (attempt > retry) {
                     // give up for this hexagon and push null or object
-                    if (returnResponses) out.push({ pop: null, response: null, error: String(lastErr) });
-                    else out.push(null);
+                    out.push(null);
                 } else {
                     // wait before retry
                     await new Promise(r => setTimeout(r, delayMs));

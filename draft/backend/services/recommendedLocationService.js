@@ -1,5 +1,5 @@
 const sql = require("mssql");
-
+const supabase = require("../supabase/supabase_client"); // adjust your path
 async function createRecommendedLocations(locations, analysisId) {
     const transaction = new sql.Transaction();
     try {
@@ -29,4 +29,19 @@ async function createRecommendedLocations(locations, analysisId) {
     }
 }
 
-module.exports = { createRecommendedLocations };
+async function saveRecommendedLocation(analysisId, lat, lon, score, reason) {
+    try {
+        await supabase.from("recommended_location").insert({
+            analysis_id: analysisId,
+            lat: lat,
+            lon: lon,
+            score: score,
+            reason: reason,
+        });
+    } catch (error) {
+        console.error("Error saving recommended location:", error);
+        throw error;
+    }
+}
+
+module.exports = { createRecommendedLocations, saveRecommendedLocation };

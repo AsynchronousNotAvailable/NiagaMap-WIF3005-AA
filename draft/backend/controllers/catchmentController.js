@@ -32,12 +32,24 @@ async function runCatchment(opts = {}) {
     const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount))) ? hexagons.slice(0, Number(maxCount)) : hexagons;
 
     const centroids = limitedHexagons.map(h => polygonCentroid(h));
+    let hexagon_objects = []; //contains hexagon objects saved to database (hex_id, ring, analysis_id, index)
+    try {
+        //save hexagons to database
+        for (let i = 0; i < limitedHexagons.length; i++) {
+            const savedHexagon = await catchmentService.saveSingleHexagonToDatabase(limitedHexagons[i], i, opts.analysisId);
+            hexagon_objects.push(savedHexagon);
+        }
+    }
+    catch (error) {
+        throw new Error("Failed to save hexagons to database", error);
+    }
 
+    
     return {
-        hexagons: limitedHexagons,
+        hexagons: hexagon_objects,
         centroids,
-        numberOfHexagons: limitedHexagons.length,
-        settings
+        numberOfHexagons: hexagon_objects.length,
+        settings,
     };
 }
 

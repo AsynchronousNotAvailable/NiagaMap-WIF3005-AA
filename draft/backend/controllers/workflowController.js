@@ -1,4 +1,9 @@
 const catchmentService = require('../services/catchmentService');
+const referencePointService = require('../services/referencePointService');
+const analysisService = require('../services/analysisService');
+const recommendedLocationService = require('../services/recommendedLocationService');
+const conversationService = require('../services/conversationService');
+const catchmentController = require('./catchmentController');
 const demandController = require('./demandController');
 const poiController = require('./poiController');
 const riskController = require('./riskController');
@@ -33,51 +38,133 @@ function getNumericScore(item) {
  * opts: { radius, center_x, center_y, category, token, maxCount }
  */
 async function runWorkflow(opts = {}) {
-    const { radius, center_x, center_y, category, token = null, maxCount = null } = opts;
-    
+    const {
+        radius,
+        center_x,
+        center_y,
+        locationName,
+        category,
+        token = null,
+        maxCount = null,
+        chatId = null,
+        userId = null,
+    } = opts;
+
     if (!category) {
-        throw new Error('category is required for workflow');
-    }
-    else if (![radius, center_x, center_y].every(n => Number.isFinite(Number(n)))) {
-        throw new Error('radius, center_x and center_y must be numeric');
-    }
-    else if (!token) {
-        throw new Error('token is required for workflow (some controllers need it)');
-    }
-    else if (maxCount != null && (!Number.isFinite(Number(maxCount)) || maxCount < 0 || !Number.isInteger(Number(maxCount))))
-    {
-        throw new Error('maxCount must be a non-negative integer if provided');
-    }
-    else if (!Number.isFinite(Number(center_x)) || !Number.isFinite(Number(center_y))) {
-        throw new Error('center_x and center_y must be numeric');
+        throw new Error("category is required for workflow");
+    } else if (
+        ![radius, center_x, center_y].every((n) => Number.isFinite(Number(n)))
+    ) {
+        throw new Error("radius, center_x and center_y must be numeric");
+    } else if (!token) {
+        throw new Error(
+            "token is required for workflow (some controllers need it)"
+        );
+    } else if (
+        maxCount != null &&
+        (!Number.isFinite(Number(maxCount)) ||
+            maxCount < 0 ||
+            !Number.isInteger(Number(maxCount)))
+    ) {
+        throw new Error("maxCount must be a non-negative integer if provided");
+    } else if (
+        !Number.isFinite(Number(center_x)) ||
+        !Number.isFinite(Number(center_y))
+    ) {
+        throw new Error("center_x and center_y must be numeric");
     }
 
-    const settings = catchmentService.getSettingsForCategory(category);
-    const hexagons = catchmentService.generateCatchmentHexagons(center_x, center_y, radius, settings.sideLength);
-    const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount))) ? hexagons.slice(0, Number(maxCount)) : hexagons;
+    // 1. create reference point record
+    const referencePoint = await referencePointService.createReferencePoint({
+        name: locationName,
+        lat: center_y,
+        lon: center_x,
+    });
 
+    // 2. create new analysis record
+    const newAnalysis = await analysisService.createAnalysis({
+        userId: userId,
+        referencePointId: referencePoint.point_id,
+        chatId: chatId || null,
+    });
+
+    const newAnalysisId = newAnalysis.analysis_id;
+    // const settings = catchmentService.getSettingsForCategory(category);
+    // const hexagons = catchmentService.generateCatchmentHexagons(center_x, center_y, radius, settings.sideLength);
+    // const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount))) ? hexagons.slice(0, Number(maxCount)) : hexagons;
+
+    // 3. generate hexagons via catchment controller
+    const hexCatchmentRes = await catchmentController.runCatchment({
+        radius,
+        center_x,
+        center_y,
+        category,
+        maxCount,
+        analysisId: newAnalysisId,
+    });
+    const settings = hexCatchmentRes.settings;
+    const hexagons = hexCatchmentRes.hexagons;
     // centroids for output
-    const centroids = limitedHexagons.map(h => polygonCentroid(h));
+    console.log("settings", settings);
 
+    const centroids = hexagons.map((h) => polygonCentroid(h.coordinates));
     // Run all controllers in parallel where possible
     // demand and poi require token; risk will generate its own server token
-    const demandPromise = demandController.runDemand({ hexagons: limitedHexagons, radius, category, token, maxCount, returnResponses: false });
-    const poiPromise = poiController.runPOIScoring({ hexagons: limitedHexagons, category, token, maxCount });
-    const riskPromise = riskController.runRiskAnalysis({ hexagons: limitedHexagons, category, maxCount, riskRatio: settings.riskRatio });
-    const zoningPromise = zoningController.runZoning({ hexagons: limitedHexagons, category, maxCount });
-    const accessibilityPromise = accessibilityController.runAccessibility({ hexagons: limitedHexagons, category, token, maxCount });
+    const demandPromise = demandController.runDemand({
+        settings: settings,
+        hexagons: hexagons, //3d,
+        radius,
+        token,
+        maxCount,
+        returnResponses: false,
+        analysisId: newAnalysisId,
+    });
+    const poiPromise = poiController.runPOIScoring({
+        hexagons: hexagons, //3d,
+        category,
+        token,
+        maxCount,
+        analysisId: newAnalysisId,
+    });
+    const riskPromise = riskController.runRiskAnalysis({
+        hexagons: hexagons,
+        category,
+        maxCount,
+        riskRatio: settings.riskRatio,
+        analysisId: newAnalysisId,
+    });
+    const zoningPromise = zoningController.runZoning({
+        hexagons: hexagons,
+        category,
+        maxCount,
+        analysisId: newAnalysisId,
+    });
+    const accessibilityPromise = accessibilityController.runAccessibility({
+        hexagons: hexagons,
+        category,
+        token,
+        maxCount,
+        analysisId: newAnalysisId,
+    });
 
-    const [demandRes, poiRes, riskRes, zoningRes, accessibilityRes] = await Promise.allSettled([demandPromise, poiPromise, riskPromise, zoningPromise, accessibilityPromise]);
+    const [demandRes, poiRes, riskRes, zoningRes, accessibilityRes] =
+        await Promise.allSettled([
+            demandPromise,
+            poiPromise,
+            riskPromise,
+            zoningPromise,
+            accessibilityPromise,
+        ]);
 
-    console.log('demandRes:', demandRes);
-    console.log('poiRes:', poiRes);
-    console.log('riskRes:', riskRes);
-    console.log('zoningRes:', zoningRes);
-    console.log('accessibilityRes:', accessibilityRes);
+    console.log("demandRes:", demandRes);
+    console.log("poiRes:", poiRes);
+    console.log("riskRes:", riskRes);
+    console.log("zoningRes:", zoningRes);
+    console.log("accessibilityRes:", accessibilityRes);
     // Helper to convert settled result to array or null
     const extractResultArray = (settled, keyFallback) => {
         if (!settled) return null;
-        if (settled.status === 'fulfilled') {
+        if (settled.status === "fulfilled") {
             const val = settled.value;
             if (!val) return null;
             // try common keys
@@ -86,59 +173,105 @@ async function runWorkflow(opts = {}) {
             if (Array.isArray(val.counts)) return val.counts;
             if (Array.isArray(val.pops)) return val.pops;
             // fallback to keyFallback if provided
-            if (keyFallback && Array.isArray(val[keyFallback])) return val[keyFallback];
+            if (keyFallback && Array.isArray(val[keyFallback]))
+                return val[keyFallback];
             return null;
         } else {
-            console.error('Workflow: controller failed', settled.reason || settled);
+            console.error(
+                "Workflow: controller failed",
+                settled.reason || settled
+            );
             return null;
         }
     };
 
     const demandScoresArr = extractResultArray(demandRes, "demandScore");
-    console.log('Extracted demandScoresArr:', demandScoresArr);
-    const poiScoresArr = extractResultArray(poiRes, 'scores');
-    const riskScoresArr = extractResultArray(riskRes, 'scores');
-    const zoningScoresArr = extractResultArray(zoningRes, 'scores');
-    const accessibilityScoresArr = extractResultArray(accessibilityRes, 'scores');
+    const poiScoresArr = extractResultArray(poiRes, "scores");
+    const riskScoresArr = extractResultArray(riskRes, "scores");
+    const zoningScoresArr = extractResultArray(zoningRes, "scores");
+    const accessibilityScoresArr = extractResultArray(
+        accessibilityRes,
+        "scores"
+    );
 
     // Build output list: for each hexagon, extract numeric scores (or treat missing as 0), sum and divide by 5
     const out = [];
-    for (let i = 0; i < limitedHexagons.length; i++) {
-        const hex = limitedHexagons[i];
+    for (let i = 0; i < hexagons.length; i++) {
+        const hex = hexagons[i];
         const centroid = centroids[i] || null;
 
-        const sDemand = demandScoresArr && demandScoresArr[i] != null ? getNumericScore(demandScoresArr[i]) : null;
-        const sPoi = poiScoresArr && poiScoresArr[i] != null ? getNumericScore(poiScoresArr[i]) : null;
-        const sRisk = riskScoresArr && riskScoresArr[i] != null ? getNumericScore(riskScoresArr[i]) : null;
-        const sZoning = zoningScoresArr && zoningScoresArr[i] != null ? getNumericScore(zoningScoresArr[i]) : null;
-        const sAccess = accessibilityScoresArr && accessibilityScoresArr[i] != null ? getNumericScore(accessibilityScoresArr[i]) : null;
+        const sDemand =
+            demandScoresArr && demandScoresArr[i] != null
+                ? getNumericScore(demandScoresArr[i])
+                : null;
+        const sPoi =
+            poiScoresArr && poiScoresArr[i] != null
+                ? getNumericScore(poiScoresArr[i])
+                : null;
+        const sRisk =
+            riskScoresArr && riskScoresArr[i] != null
+                ? getNumericScore(riskScoresArr[i])
+                : null;
+        const sZoning =
+            zoningScoresArr && zoningScoresArr[i] != null
+                ? getNumericScore(zoningScoresArr[i])
+                : null;
+        const sAccess =
+            accessibilityScoresArr && accessibilityScoresArr[i] != null
+                ? getNumericScore(accessibilityScoresArr[i])
+                : null;
 
-            const a = (sDemand == null) ? 0 : sDemand;
-            const b = (sPoi == null) ? 0 : sPoi;
-            const c = (sRisk == null) ? 0 : sRisk;
-            const d = (sZoning == null) ? 0 : sZoning;
-            const e = (sAccess == null) ? 0 : sAccess;
+        const a = sDemand == null ? 0 : sDemand;
+        const b = sPoi == null ? 0 : sPoi;
+        const c = sRisk == null ? 0 : sRisk;
+        const d = sZoning == null ? 0 : sZoning;
+        const e = sAccess == null ? 0 : sAccess;
 
-            // include each controller's score in the output item
-            const demandScoreNum = (sDemand == null) ? null : Number(sDemand);
-            const poiScoreNum = (sPoi == null) ? null : Number(sPoi);
-            const riskScoreNum = (sRisk == null) ? null : Number(sRisk);
-            const zoningScoreNum = (sZoning == null) ? null : Number(sZoning);
-            const accessibilityScoreNum = (sAccess == null) ? null : Number(sAccess);
+        // include each controller's score in the output item
+        // const demandScoreNum = sDemand == null ? null : Number(sDemand);
+        // const poiScoreNum = sPoi == null ? null : Number(sPoi);
+        // const riskScoreNum = sRisk == null ? null : Number(sRisk);
+        // const zoningScoreNum = sZoning == null ? null : Number(sZoning);
+        // const accessibilityScoreNum = sAccess == null ? null : Number(sAccess);
 
-            const finalScore = (a + b + c + d + e);
+        const finalScore = a + b + c + d + e;
 
-            out.push({
-                hexagon: hex,
-                centroid,
-                demandScore: demandScoreNum,
-                poiScore: poiScoreNum,
-                riskScore: riskScoreNum,
-                zoningScore: zoningScoreNum,
-                accessibilityScore: accessibilityScoreNum,
-                finalScore: Number(finalScore.toFixed(2))
-            });
+        out.push({
+            hexagon: hex,
+            centroid,
+            demandScore: demandRes.value,
+            poiScore: poiRes.value,
+            riskScore: riskRes.value,
+            zoningScore: zoningRes.value,
+            accessibilityScore: accessibilityRes.value,
+            finalScore: Number(finalScore.toFixed(2)),
+        });
     }
+
+    //sort the locations by finalScore in descending order
+    out.sort((a, b) => b.finalScore - a.finalScore);
+
+    // 4. save the top 1 recommended locations by analysis id
+    if (out.length > 0) {
+        const topLocation = out[0];
+        try {
+            await recommendedLocationService.saveRecommendedLocation(
+                newAnalysisId,
+                center_y,
+                center_x,
+                topLocation.finalScore,
+                "reason"
+            );
+        } catch (error) {
+            console.error(
+                "Error saving recommended location to database:",
+                error
+            );
+        }
+    }
+
+    // Update conversation with analysisId
+    // await conversationService.updateAnalysisId(chatId, newAnalysisId);
 
     return out;
 }

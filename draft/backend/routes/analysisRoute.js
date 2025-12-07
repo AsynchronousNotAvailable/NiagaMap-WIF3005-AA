@@ -8,6 +8,7 @@ const {
     deleteAnalysis,
 } = require("../services/analysisService");
 const catchmentController = require('../controllers/catchmentController');
+const catchmentService = require('../services/catchmentService');
 const demandController = require('../controllers/demandController');
 const poiController = require('../controllers/poiController');
 const accessibilityController = require('../controllers/accessibilityController');
@@ -160,7 +161,10 @@ router.post('/analysis/catchment', async (req, res) => {
 // POST /analysis/demand
 // body: { hexagons?, radius?, center_x?, center_y?, category?, maxCount?, returnResponses? }
 router.post('/analysis/demand', async (req, res) => {
-    const { hexagons, radius, center_x, center_y, category, maxCount, returnResponses } = req.body || {};
+    const {
+        hexagons,
+        category
+    } = req.body || {};
 
     // require either hexagons or center/radius
     if ((!Array.isArray(hexagons) || hexagons.length === 0) && (radius == null || center_x == null || center_y == null)) {
@@ -173,10 +177,11 @@ router.post('/analysis/demand', async (req, res) => {
     if (!token) {
         return res.status(400).json({ error: 'ArcGIS token is required. Set ARC_API_KEY in the backend environment or provide a Bearer token in Authorization header.' });
     }
+    const settings = catchmentService.getSettingsForCategory(category);
 
     try {
-        const result = await demandController.runDemand({ hexagons, radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token, maxCount, returnResponses });
-
+        const result = await demandController.runDemand({ settings, hexagons, token });
+        
         // Per request: compute demand indicator but return the generated hexagons only (with centroids)
         res.status(200).json(result);
     } catch (err) {
@@ -188,7 +193,7 @@ router.post('/analysis/demand', async (req, res) => {
 // POST /analysis/workflow
 // body: { radius, center_x?, center_y?, locationName?, currentLocation?, nearbyMe?, category, maxCount?, token? }
 router.post('/analysis/workflow', async (req, res) => {
-    const { radius, locationName, currentLocation, nearbyMe, category, maxCount } = req.body || {};
+    const { radius, locationName, currentLocation, nearbyMe, category, maxCount, analysisId, chatId, userId } = req.body || {};
     // Token can be provided via Authorization header (Bearer ...) or from environment variables.
     const token = extractToken(req);
 
@@ -217,6 +222,7 @@ router.post('/analysis/workflow', async (req, res) => {
         }
         coord = {
             location: {
+                name: nearbyMe ? "Current Location" : locationName,
                 y: currentLocation.lat,
                 x: currentLocation.lon,
             }
@@ -247,9 +253,13 @@ router.post('/analysis/workflow', async (req, res) => {
             radius: Number(radius),
             center_x: coord.location.x,
             center_y: coord.location.y,
+            locationName: coord.location.name,
             category,
             token,
             maxCount,
+            analysisId: analysisId,
+            chatId: chatId,
+            userId: userId,
         });
         res.status(200).json({ results });
     } catch (err) {
@@ -264,7 +274,7 @@ router.post('/analysis/workflow', async (req, res) => {
 // POST /analysis/pois
 // body: { hexagons? (3d array), radius?, center_x?, center_y?, category? }
 router.post('/analysis/pois', async (req, res) => {
-    const { hexagons, radius, center_x, center_y, category, maxCount } = req.body || {};
+    const { hexagons, category } = req.body || {};
 
     // Token can be provided via Authorization header (Bearer ...) or from environment variables.
     const token = extractToken(req);
@@ -274,7 +284,7 @@ router.post('/analysis/pois', async (req, res) => {
     }
 
     try {
-        const result = await poiController.runPOIScoring({ hexagons, radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token, maxCount });
+        const result = await poiController.runPOIScoring({ hexagons, category, token});
         res.status(200).json(result);
     } catch (err) {
         console.error('POI scoring failed:', err);
@@ -285,11 +295,7 @@ router.post('/analysis/pois', async (req, res) => {
 // POST /analysis/accessibility
 // body: { radius, center_x, center_y, category, maxCount? }
 router.post('/analysis/accessibility', async (req, res) => {
-    const { radius, center_x, center_y, category, maxCount } = req.body || {};
-
-    if (radius == null || center_x == null || center_y == null) {
-        return res.status(400).json({ error: 'radius, center_x and center_y are required in the request body' });
-    }
+    const { hexagons, category } = req.body || {};
 
     const token = extractToken(req);
 
@@ -298,7 +304,7 @@ router.post('/analysis/accessibility', async (req, res) => {
     }
 
     try {
-        const result = await accessibilityController.runAccessibility({ radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token, maxCount });
+        const result = await accessibilityController.runAccessibility({ hexagons, category, token });
         res.status(200).json(result);
     } catch (err) {
         console.error('Accessibility processing failed:', err);
@@ -329,16 +335,12 @@ router.post('/analysis/zoning', async (req, res) => {
 // POST /analysis/risk
 // body: { radius, center_x, center_y, category, maxCount? }
 router.post('/analysis/risk', async (req, res) => {
-    const { hexagons, radius, center_x, center_y, category, maxCount } = req.body || {};
-
-    if (radius == null || center_x == null || center_y == null) {
-        return res.status(400).json({ error: 'radius, center_x and center_y are required in the request body' });
-    }
+    const { hexagons, category } = req.body || {};
 
     try {
         // Force server-side token generation inside the controller/helper.
         // Do NOT accept token from client for this endpoint.
-        const result = await riskController.runRiskAnalysis({ hexagons, radius: Number(radius), center_x: Number(center_x), center_y: Number(center_y), category, token: null, maxCount });
+        const result = await riskController.runRiskAnalysis({ hexagons, category });
         res.status(200).json(result);
     } catch (err) {
         console.error('Risk processing failed:', err);

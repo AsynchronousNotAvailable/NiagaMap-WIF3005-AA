@@ -22,7 +22,7 @@ async function runZoning(opts = {}) {
     return {
         hexagons: limitedHexagons,
         scores,
-        rawResponses
+        // rawResponses
     };
 }
 

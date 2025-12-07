@@ -1,28 +1,23 @@
 const sql = require("mssql");
+const supabase = require("../supabase/supabase_client"); // adjust your path
 
 async function createAnalysis({ userId, referencePointId, chatId }) {
-    const analysisId = `analysis_${Date.now()}`;
-    const transaction = new sql.Transaction();
-    try {
-        await transaction.begin();
-        const request = new sql.Request(transaction);
-        await request
-            .input("analysisId", sql.VarChar, analysisId)
-            .input("userId", sql.VarChar, userId)
-            .input("referencePointId", sql.VarChar, referencePointId)
-            .input("chatId", sql.VarChar, chatId)
-            .query(`
-            INSERT INTO Analysis (analysisId, userId, referencePointId, chatId, created_at)
-            VALUES (@analysisId, @userId, @referencePointId, @chatId, GETDATE())
-        `);
-    await transaction.commit();
-    return analysisId;
-    }
-    catch (err) {
-        await transaction.rollback();
-        throw new Error("Failed to create analysis: " + err.message);
-    }
+    const { data, error } = await supabase
+        .from("analysis")
+        .insert({
+            user_id: userId,
+            reference_point_id: referencePointId,
+            chat_id: chatId,
+        })
+        .select("*");
+
+    if (error) throw new Error("Failed to create analysis: " + error.message);
+
+    return data[0];
 }
+
+module.exports = { createAnalysis };
+
 
 async function getUserAnalysesWithDetails(userId) {
     const transaction = new sql.Transaction();

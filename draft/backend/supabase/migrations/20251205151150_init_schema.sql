@@ -119,6 +119,7 @@ CREATE TABLE public.recommended_location (
 CREATE TABLE public.hexagon (
     hex_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id uuid NOT NULL,
+    hex_index integer NOT NULL,
     coordinates jsonb,  -- stores [[lon,lat], [lon,lat], ... 6 nodes]
 
     CONSTRAINT fk_hex_analysis FOREIGN KEY (analysis_id)
