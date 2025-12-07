@@ -6,7 +6,7 @@ const conversationService = require("../services/conversationService");
 router.get("/:chatId", async (req, res) => {
     const { chatId } = req.params;
     try {
-        const conversations = await conversationService.getConversations(
+        const conversations = await conversationService.getConversationsByChatId(
             chatId
         );
         res.json(conversations);

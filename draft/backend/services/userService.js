@@ -29,6 +29,7 @@ module.exports = {
                 .from("users")
                 .insert([
                     {
+                        user_id: user.userId,
                         name: user.name,
                         preference_id: prefData[0].preference_id,
                     },

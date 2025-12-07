@@ -1,6 +1,3 @@
--- Create schema (optional; Supabase defaults to "public")
--- CREATE SCHEMA dbo;
-
 -- ================================
 -- Users Preferences
 -- ================================
@@ -27,13 +24,12 @@ CREATE TABLE public.reference_point (
 -- ================================
 
 CREATE TABLE public.users (
-    user_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id text PRIMARY KEY, -- changed from uuid
     name text,
     preference_id uuid,
     CONSTRAINT fk_users_preference FOREIGN KEY (preference_id)
       REFERENCES public.preferences(preference_id) ON DELETE SET NULL
 );
-
 
 -- ================================
 -- Analysis
@@ -41,7 +37,7 @@ CREATE TABLE public.users (
 
 CREATE TABLE public.analysis (
     analysis_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid,
+    user_id text, -- changed from uuid
     reference_point_id uuid,
     chat_id uuid,
     created_at timestamptz DEFAULT now(),
@@ -53,7 +49,6 @@ CREATE TABLE public.analysis (
       REFERENCES public.reference_point(point_id) ON DELETE SET NULL
 );
 
-
 -- ================================
 -- Chat
 -- ================================
@@ -62,7 +57,7 @@ CREATE TABLE public.chat (
     chat_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     title text,
     thread_id text,
-    user_id uuid,
+    user_id text, -- changed from uuid
     analysis_id uuid,
     created_at timestamptz DEFAULT now(),
 
@@ -92,7 +87,6 @@ CREATE TABLE public.conversation (
       REFERENCES public.analysis(analysis_id) ON DELETE SET NULL
 );
 
-
 -- ================================
 -- Recommended Location
 -- ================================
@@ -109,23 +103,19 @@ CREATE TABLE public.recommended_location (
       REFERENCES public.analysis(analysis_id) ON DELETE CASCADE
 );
 
-
 -- ================================
 -- HEXAGON + ANALYSIS EXTENSION
 -- ================================
 
--- HEXAGON TABLE  
--- Stores hex metadata + polygon geometry (6 coordinate pairs)
 CREATE TABLE public.hexagon (
     hex_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id uuid NOT NULL,
     hex_index integer NOT NULL,
-    coordinates jsonb,  -- stores [[lon,lat], [lon,lat], ... 6 nodes]
+    coordinates jsonb,
 
     CONSTRAINT fk_hex_analysis FOREIGN KEY (analysis_id)
       REFERENCES public.analysis(analysis_id) ON DELETE CASCADE
 );
-
 
 -- ================================
 -- DEMAND TABLE
@@ -141,7 +131,6 @@ CREATE TABLE public.demand (
       REFERENCES public.hexagon(hex_id) ON DELETE CASCADE
 );
 
-
 -- ================================
 -- POINTS OF INTEREST TABLE
 -- ================================
@@ -155,7 +144,6 @@ CREATE TABLE public.poi (
     CONSTRAINT fk_poi_hex FOREIGN KEY (hex_id)
       REFERENCES public.hexagon(hex_id) ON DELETE CASCADE
 );
-
 
 -- ================================
 -- ACCESSIBILITY TABLE
@@ -171,7 +159,6 @@ CREATE TABLE public.accessibility (
       REFERENCES public.hexagon(hex_id) ON DELETE CASCADE
 );
 
-
 -- ================================
 -- ZONING TABLE
 -- ================================
@@ -179,12 +166,11 @@ CREATE TABLE public.accessibility (
 CREATE TABLE public.zoning (
     zoning_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     hex_id uuid NOT NULL,
-    zoning_type text, -- store zoning use class if applicable
+    zoning_type text,
 
     CONSTRAINT fk_zoning_hex FOREIGN KEY (hex_id)
       REFERENCES public.hexagon(hex_id) ON DELETE CASCADE
 );
-
 
 -- ================================
 -- RISK TABLE
@@ -202,14 +188,13 @@ CREATE TABLE public.risk (
       REFERENCES public.hexagon(hex_id) ON DELETE CASCADE
 );
 
-
 -- ================================
--- FAVOURITE TABLE (User saved Analyses)
+-- FAVOURITE TABLE
 -- ================================
 
 CREATE TABLE public.favourites (
     favourite_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL,
+    user_id text NOT NULL, -- changed from uuid
     analysis_id uuid NOT NULL,
     created_at timestamptz DEFAULT now(),
 
