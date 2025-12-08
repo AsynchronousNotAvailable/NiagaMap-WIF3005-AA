@@ -144,45 +144,157 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         input
       );
 
-      let botResult;
-      if (selectedFile) {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        formData.append("message", enrichedMessage);
-        const res = await axios.post(`${API}/api/chatbot/upload`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        botResult = res.data;
-      } else {
-        const res = await axios.post(`${API}/api/chatbot`, { message: enrichedMessage });
-        botResult = res.data;
-      }
+      // Step 1: Get parsed parameters from OpenAI
+      const res = await axios.post(`${API}/api/chatbot`, { message: enrichedMessage });
+      const botResult = res.data;
 
+      console.log("Bot parsed result:", botResult);
+
+      // Step 2: Save initial conversation with parsed data
       const saveRes = await axios.put(`${API}/chats/${selectedChat}/messages`, {
         user_prompt: enrichedMessage,
         bot_answer: JSON.stringify(botResult),
       });
-      const conversationId = saveRes.data.conversationId;
 
-      if (onExtracted && (botResult.location || botResult.nearbyMe) && botResult.category) {
-        onExtracted({
-          location: botResult.location,
-          category: selectedCategory,
-          radius: botResult.radius || 1000,
-          nearbyMe: botResult.nearbyMe || false,
-          weights: normalizedWeights,
-          chatId: selectedChat,
-          userId: userId,
-          conversationId,
-        });
+      console.log("Save conversation response:", saveRes.data);
+
+      const conversationId = saveRes.data.conversation_id || saveRes.data.conversationId;
+
+      if (!conversationId) {
+        console.error("No conversation_id in response:", saveRes.data);
+        throw new Error("Failed to get conversation_id from server");
       }
 
-      fetchConversation(selectedChat);
+      console.log("Got conversation_id:", conversationId);
+
+      // Step 3: Call analysis workflow instead of suitability
+      if ((botResult.location || botResult.nearbyMe) && botResult.category) {
+        let currentLocation = null;
+        let locationName = null;
+
+        if (botResult.nearbyMe) {
+          // Get user's current location from browser
+          console.log("Requesting user's current location...");
+          
+          try {
+            const position = await new Promise((resolve, reject) => {
+              if (!navigator.geolocation) {
+                reject(new Error("Geolocation is not supported by your browser"));
+              }
+              
+              navigator.geolocation.getCurrentPosition(
+                (pos) => resolve(pos),
+                (err) => reject(err),
+                { 
+                  enableHighAccuracy: true,
+                  timeout: 10000,
+                  maximumAge: 0
+                }
+              );
+            });
+
+            currentLocation = {
+              lat: position.coords.latitude,
+              lon: position.coords.longitude
+            };
+
+            console.log("Got current location:", currentLocation);
+          } catch (geoError) {
+            console.error("Geolocation error:", geoError);
+            throw new Error(`Unable to get your location: ${geoError.message}. Please enable location services or specify a location name.`);
+          }
+        } else {
+          // When nearbyMe is false, use the location name from botResult
+          locationName = botResult.location;
+          console.log("Using location name:", locationName);
+        }
+
+        const workflowPayload = {
+          radius: botResult.radius || 1000,
+          locationName: locationName,
+          currentLocation: currentLocation,
+          nearbyMe: botResult.nearbyMe || false,
+          category: CATEGORY_PRESETS[selectedCategory].label,
+          maxCount: 10,
+          userId: userId,
+          chatId: selectedChat,
+          weights: normalizedWeights
+        };
+
+        console.log("Calling workflow with:", workflowPayload);
+
+        // Call the workflow endpoint
+        const workflowRes = await axios.post(`${API}/analysis/workflow`, workflowPayload);
+        const analysisResults = workflowRes.data.results;
+
+        console.log("Workflow results:", analysisResults);
+
+        // Step 4: Extract top 3 locations and update conversation with analysis_id
+        if (analysisResults && analysisResults.length > 0) {
+          const analysisId = analysisResults[0].hexagon.analysis_id;
+          
+          console.log("Updating conversation", conversationId, "with analysis_id", analysisId);
+
+          // Update the conversation with the analysis_id
+          await axios.patch(`${API}/conversations/${conversationId}`, {
+            analysis_id: analysisId
+          });
+
+          console.log("Successfully linked conversation to analysis");
+
+          // Extract top 3 locations
+          const topLocations = analysisResults
+            .sort((a, b) => b.finalScore - a.finalScore)
+            .slice(0, 3)
+            .map(r => ({
+              lat: r.centroid.lat,
+              lon: r.centroid.lon,
+              score: r.finalScore,
+              breakdown: {
+                risk: r.riskScore.scores.find(s => 
+                  s.centroid.lat === r.centroid.lat
+                )?.score || 0,
+                accessibility: r.accessibilityScore.scores.find(s => 
+                  s.centroid.lat === r.centroid.lat
+                )?.score || 0,
+                zoning: r.zoningScore.scores.find(s => 
+                  s.centroid.lat === r.centroid.lat
+                )?.score || 0
+              }
+            }));
+
+          // Generate reasoning using OpenAI
+          const reasoningRes = await axios.post(`${API}/api/chatbot/reasoning`, {
+            userIntent: input,
+            center: currentLocation || { lat: 0, lon: 0 },
+            recommendations: topLocations,
+            category: CATEGORY_PRESETS[selectedCategory].label,
+            weights: normalizedWeights
+          });
+
+          const reasoningData = reasoningRes.data;
+          
+          // Save reasoning as a bot message
+          await axios.put(`${API}/chats/${selectedChat}/messages`, {
+            user_prompt: "",
+            bot_answer: JSON.stringify({
+              type: "analysis_complete",
+              analysisId: analysisId,
+              reasoning: reasoningData,
+              topLocations: topLocations
+            })
+          });
+        }
+
+        fetchConversation(selectedChat);
+      }
+
       setSelectedFile(null);
       setInput("");
     } catch (err) {
-      console.error(err);
-      alert("Something went wrong.");
+      console.error("Chatbot error:", err);
+      console.error("Error details:", err.response?.data);
+      alert(`Error: ${err.response?.data?.error || err.message}`);
     } finally {
       setLoading(false);
     }

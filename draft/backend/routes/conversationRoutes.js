@@ -6,9 +6,7 @@ const conversationService = require("../services/conversationService");
 router.get("/:chat_id", async (req, res) => {
     const { chat_id } = req.params;
     try {
-        const conversations = await conversationService.getConversationsByChatId(
-            chat_id
-        );
+        const conversations = await conversationService.getConversationsByChatId(chat_id);
         res.json(conversations);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -26,6 +24,21 @@ router.post("/:chat_id", async (req, res) => {
             bot_answer
         );
         res.status(201).json(conversation);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update conversation with analysis_id
+router.patch("/:conversation_id", async (req, res) => {
+    const { conversation_id } = req.params;
+    const { analysis_id } = req.body;
+    try {
+        const updated = await conversationService.updateAnalysisId(
+            conversation_id,
+            analysis_id
+        );
+        res.json(updated);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

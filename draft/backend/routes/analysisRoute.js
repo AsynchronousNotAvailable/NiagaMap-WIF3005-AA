@@ -194,6 +194,12 @@ router.post('/analysis/demand', async (req, res) => {
 // body: { radius, center_x?, center_y?, locationName?, currentLocation?, nearbyMe?, category, maxCount?, token? }
 router.post('/analysis/workflow', async (req, res) => {
     const { radius, locationName, currentLocation, nearbyMe, category, maxCount, analysisId, chatId, userId } = req.body || {};
+    
+    // Validate userId is provided
+    if (!userId) {
+        return res.status(400).json({ error: "userId is required in the request body" });
+    }
+    
     // Token can be provided via Authorization header (Bearer ...) or from environment variables.
     const token = extractToken(req);
 
@@ -204,48 +210,54 @@ router.post('/analysis/workflow', async (req, res) => {
                 error: "ArcGIS token is required. Set ARC_API_KEY in the backend environment or provide a Bearer token in Authorization header.",
             });
     }
+
+    // Validate radius
+    if (radius == null) {
+        return res.status(400).json({
+            error: "radius is required in the request body",
+        });
+    }
+
     let coord;
+    
+    // Case 1: nearbyMe is true - use currentLocation
     if (nearbyMe && currentLocation) {
-        if (currentLocation.lat == null || currentLocation.lon == null || isNaN(Number(currentLocation.lat)) || isNaN(Number(currentLocation.lon))) {
-            return res
-                .status(400)
-                .json({
-                    error: "currentLocation must include lat and lon fields",
-                });
+        if (currentLocation.lat == null || currentLocation.lon == null || 
+            isNaN(Number(currentLocation.lat)) || isNaN(Number(currentLocation.lon))) {
+            return res.status(400).json({
+                error: "currentLocation must include valid lat and lon fields",
+            });
         }
-        if (currentLocation.lat < -90 || currentLocation.lat > 90 || currentLocation.lon < -180 || currentLocation.lon > 180) {
-            return res
-                .status(400)
-                .json({
-                    error: "currentLocation lat must be between -90 and 90 and lon must be between -180 and 180",
-                });
+        if (currentLocation.lat < -90 || currentLocation.lat > 90 || 
+            currentLocation.lon < -180 || currentLocation.lon > 180) {
+            return res.status(400).json({
+                error: "currentLocation lat must be between -90 and 90 and lon must be between -180 and 180",
+            });
         }
         coord = {
             location: {
-                name: nearbyMe ? "Current Location" : locationName,
+                name: "Current Location",
                 y: currentLocation.lat,
                 x: currentLocation.lon,
             }
         };
-        console.log("Geocoded location using current location:", coord);
-    } else {
-        if (!locationName || locationName.trim().length === 0) {
-            return res
-                .status(400)
-                .json({
-                    error: "locationName is required in the request body when nearbyMe is false",
-                });
-        }
-        coord = await arcgis.geocodeLocation(locationName); // returns { x, y }
-        console.log("Geocoded location using location name:", coord);
-    }
-
-    if (radius == null || (locationName == null && !(nearbyMe && currentLocation))) {
-        return res
-            .status(400)
-            .json({
-                error: "radius is required in the request body",
+        console.log("Using current location:", coord);
+    } 
+    // Case 2: nearbyMe is false - use locationName
+    else if (!nearbyMe && locationName) {
+        if (!locationName.trim().length) {
+            return res.status(400).json({
+                error: "locationName cannot be empty",
             });
+        }
+        coord = await arcgis.geocodeLocation(locationName);
+        console.log("Geocoded location from name:", coord);
+    }
+    // Case 3: Invalid combination
+    else {
+        return res.status(400).json({
+            error: "Either provide nearbyMe=true with currentLocation, or nearbyMe=false with locationName",
+        });
     }
   
     try {
@@ -257,9 +269,9 @@ router.post('/analysis/workflow', async (req, res) => {
             category,
             token,
             maxCount,
-            analysisId: analysisId,
-            chatId: chatId,
-            userId: userId,
+            analysis_id: analysisId,
+            chat_id: chatId,
+            user_id: userId,
         });
         res.status(200).json({ results });
     } catch (err) {
