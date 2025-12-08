@@ -6,7 +6,6 @@ import {
     signInWithPopup,
     sendPasswordResetEmail,
 } from "firebase/auth";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 const AuthPage = ({ darkMode = false }) => {
@@ -25,36 +24,16 @@ const AuthPage = ({ darkMode = false }) => {
         setError("");
         setSuccess("");
         try {
-            let userCredential;
             if (isLogin) {
-                userCredential = await signInWithEmailAndPassword(
-                    auth,
-                    email,
-                    password
-                );
+                await signInWithEmailAndPassword(auth, email, password);
             } else {
-                userCredential = await createUserWithEmailAndPassword(
-                    auth,
-                    email,
-                    password
-                );
+                await createUserWithEmailAndPassword(auth, email, password);
             }
-            const token = await userCredential.user.getIdToken();
-            console.log("Firebase auth successful, verifying with backend...");
-            await axios.post("http://localhost:3001/auth/verify", { token });
             setSuccess(isLogin ? "Login successful!" : "Signup successful!");
             navigate("/map");
         } catch (err) {
             console.error("Auth error:", err);
-            if (err.response) {
-                console.error("Backend response:", err.response.data);
-                setError(`Backend error: ${err.response.data.message || err.message}`);
-            } else if (err.code) {
-                console.error("Firebase error:", err.code, err.message);
-                setError(`Firebase error: ${err.message}`);
-            } else {
-                setError(err.message);
-            }
+            setError(err.message);
         }
     };
 
@@ -62,12 +41,11 @@ const AuthPage = ({ darkMode = false }) => {
         setError("");
         setSuccess("");
         try {
-            const result = await signInWithPopup(auth, googleProvider);
-            const token = await result.user.getIdToken();
-            await axios.post("http://localhost:3001/auth/verify", { token });
+            await signInWithPopup(auth, googleProvider);
             setSuccess("Google login successful!");
             navigate("/map");
         } catch (err) {
+            console.error("Google auth error:", err);
             setError(err.message);
         }
     };
