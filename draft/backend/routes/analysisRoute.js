@@ -158,70 +158,95 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
         
         console.log("Found reference point:", referencePoint);
 
-        // Fetch chat conversation to get category and weights
-        const { data: conversation, error: convError } = await supabase
-            .from("conversation")
-            .select("user_prompt, bot_answer")
-            .eq("analysis_id", analysisId)
-            .single();
-
-        let category = "retail";
-        let weights = { demand: 20, poi: 20, risk: 20, accessibility: 20, zoning: 20 };
-
-        if (conversation && conversation.bot_answer) {
-            try {
-                const botData = JSON.parse(conversation.bot_answer);
-                category = botData.category || "retail";
-                weights = botData.weights || weights;
-            } catch (e) {
-                console.error("Failed to parse bot_answer:", e);
+        // Parse breakdown and check if AI reasoning already exists
+        const formattedLocations = locations.map(loc => {
+            let breakdown = loc.reason;
+            let aiReason = loc.ai_reason; // Get existing AI reason from database
+            
+            // Parse breakdown if it's a string
+            if (typeof breakdown === 'string') {
+                try {
+                    breakdown = JSON.parse(breakdown);
+                } catch (e) {
+                    console.error("Failed to parse breakdown:", e);
+                }
             }
-        }
-        
-        // Parse breakdown JSON strings (stored in 'reason' column)
-        const formattedLocations = locations.map(loc => ({
-            location_id: loc.location_id, // Add this to track which record to update
-            lat: loc.lat,
-            lon: loc.lon,
-            score: loc.score,
-            breakdown: typeof loc.reason === 'string' 
-                ? JSON.parse(loc.reason) 
-                : loc.reason
-        }));
 
-        // Generate AI reasoning for locations
-        console.log("Generating AI reasoning...");
-        const locationsWithReasoning = await generateLocationReasoning({
-            locations: formattedLocations,
-            category,
-            weights,
-            referencePoint: {
-                lat: referencePoint.lat,
-                lon: referencePoint.lon,
-                name: referencePoint.name
-            }
+            return {
+                location_id: loc.location_id,
+                lat: loc.lat,
+                lon: loc.lon,
+                score: loc.score,
+                breakdown: breakdown,
+                reason: aiReason // Use existing AI reason
+            };
         });
 
-        console.log("AI reasoning generated:", locationsWithReasoning);
+        // Check if ALL locations have AI reasoning
+        const needsAiReasoning = formattedLocations.some(loc => !loc.reason || loc.reason === null || loc.reason === '');
 
-        // Save the AI reasoning back to database
-        for (let i = 0; i < locationsWithReasoning.length; i++) {
-            const locationWithReason = locationsWithReasoning[i];
-            const originalLocation = formattedLocations[i];
+        let locationsWithReasoning = formattedLocations;
 
-            // Update the record with AI reasoning in the 'ai_reason' column
-            const { error: updateError } = await supabase
-                .from("recommended_location")
-                .update({
-                    ai_reason: locationWithReason.reason
-                })
-                .eq("location_id", originalLocation.location_id);
+        // Only generate AI reasoning if it doesn't exist for any location
+        if (needsAiReasoning) {
+            console.log("⚠️ AI reasoning missing for some locations, generating new reasoning...");
+            
+            // Fetch chat conversation to get category and weights
+            const { data: conversation, error: convError } = await supabase
+                .from("conversation")
+                .select("user_prompt, bot_answer")
+                .eq("analysis_id", analysisId)
+                .single();
 
-            if (updateError) {
-                console.error("Error updating AI reasoning:", updateError);
-            } else {
-                console.log(`Updated location ${originalLocation.location_id} with AI reasoning`);
+            let category = "retail";
+            let weights = { demand: 20, poi: 20, risk: 20, accessibility: 20, zoning: 20 };
+
+            if (conversation && conversation.bot_answer) {
+                try {
+                    const botData = JSON.parse(conversation.bot_answer);
+                    category = botData.category || "retail";
+                    weights = botData.weights || weights;
+                } catch (e) {
+                    console.error("Failed to parse bot_answer:", e);
+                }
             }
+
+            // Generate AI reasoning for locations
+            console.log("🤖 Calling OpenAI to generate reasoning...");
+            locationsWithReasoning = await generateLocationReasoning({
+                locations: formattedLocations,
+                category,
+                weights,
+                referencePoint: {
+                    lat: referencePoint.lat,
+                    lon: referencePoint.lon,
+                    name: referencePoint.name
+                }
+            });
+
+            console.log("✅ AI reasoning generated:", locationsWithReasoning);
+
+            // Save the AI reasoning back to database
+            for (let i = 0; i < locationsWithReasoning.length; i++) {
+                const locationWithReason = locationsWithReasoning[i];
+                const originalLocation = formattedLocations[i];
+
+                // Update the record with AI reasoning in the 'ai_reason' column
+                const { error: updateError } = await supabase
+                    .from("recommended_location")
+                    .update({
+                        ai_reason: locationWithReason.reason
+                    })
+                    .eq("location_id", originalLocation.location_id);
+
+                if (updateError) {
+                    console.error("❌ Error updating AI reasoning:", updateError);
+                } else {
+                    console.log(`✅ Updated location ${originalLocation.location_id} with AI reasoning`);
+                }
+            }
+        } else {
+            console.log("✅ AI reasoning already exists in database, using cached version");
         }
         
         res.json({
@@ -233,7 +258,7 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Error fetching recommendations:", error);
+        console.error("❌ Error fetching recommendations:", error);
         res.status(500).json({ error: error.message });
     }
 });
