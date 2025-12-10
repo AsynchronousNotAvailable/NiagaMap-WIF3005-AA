@@ -194,7 +194,7 @@ const ConversationArea = forwardRef(({
                     onMouseLeave={(e) => {
                       e.target.style.transform = "scale(1)";
                     }}
-                    onClick={() => handleToggleFavourite(msg.analysisId)}
+                    onClick={() => handleToggleFavourite(msg.analysisId, cleanMessage)}
                     title={isFavourited ? "Remove from favourites" : "Add to favourites"}
                   >
                     {isFavourited ? "⭐" : "☆"}

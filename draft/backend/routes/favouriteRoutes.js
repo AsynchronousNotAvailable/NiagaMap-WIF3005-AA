@@ -5,10 +5,11 @@ const favouriteService = require("../services/favouriteService");
 // POST /favourites
 router.post("/", async (req, res) => {
     try {
-        const { user_id, analysis_id } = req.body;
+        const { user_id, analysis_id, name } = req.body;
         const favourite = await favouriteService.addFavourite(
             user_id,
-            analysis_id
+            analysis_id,
+            name
         );
         res.status(201).json(favourite);
     } catch (err) {
@@ -19,10 +20,9 @@ router.post("/", async (req, res) => {
 // GET /favourites/:user_id
 router.get("/:user_id", async (req, res) => {
     try {
-        const favourites = await favouriteService.getFavourites(
-            req.params.user_id
-        );
-        res.json(favourites);
+        const { user_id } = req.params;
+        const favourites = await favouriteService.getFavourites(user_id);
+        res.status(200).json(favourites);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -32,11 +32,11 @@ router.get("/:user_id", async (req, res) => {
 router.delete("/", async (req, res) => {
     try {
         const { user_id, analysis_id } = req.body;
-        const removed = await favouriteService.removeFavourite(
+        const result = await favouriteService.removeFavourite(
             user_id,
             analysis_id
         );
-        res.json(removed);
+        res.status(200).json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

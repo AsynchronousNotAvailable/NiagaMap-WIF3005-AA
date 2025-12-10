@@ -76,7 +76,7 @@ function ChatSidebar({
                 {favourites.map((fav) => {
                   // Safely handle null or undefined analysis_id
                   const analysisId = fav.analysis_id || '';
-                  const displayId = analysisId ? analysisId.substring(0, 8) : 'N/A';
+                  const displayName = fav.name || `Analysis ${analysisId.substring(0, 8) || 'N/A'}`;
                   
                   return (
                     <div
@@ -114,9 +114,9 @@ function ChatSidebar({
                           fontWeight: 500,
                         }}
                         onClick={() => analysisId && handleViewFavourite(analysisId)}
-                        title={analysisId ? `Analysis ${displayId}...` : 'Invalid Analysis'}
+                        title={displayName}
                       >
-                        📊 {displayId}...
+                        📊 {displayName}
                       </span>
                       
                       <button

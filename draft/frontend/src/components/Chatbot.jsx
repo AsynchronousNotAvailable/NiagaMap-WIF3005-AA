@@ -321,7 +321,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
     }
   };
 
-  const handleToggleFavourite = async (analysisId) => {
+  const handleToggleFavourite = async (analysisId, userPrompt = null) => {
     if (!analysisId || !userId) return;
 
     try {
@@ -331,10 +331,11 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
           data: { user_id: userId, analysis_id: analysisId }
         });
       } else {
-        // Add to favourites
+        // Add to favourites with user's question
         await api.post(`/favourites`, {
           user_id: userId,
-          analysis_id: analysisId
+          analysis_id: analysisId,
+          name: userPrompt || `Analysis ${new Date().toLocaleDateString()}`
         });
       }
       fetchFavourites();

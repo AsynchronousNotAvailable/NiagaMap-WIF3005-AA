@@ -2,7 +2,7 @@ const supabase = require("../supabase/supabase_client");
 
 module.exports = {
     // Add a favourite for a user
-    addFavourite: async (user_id, analysis_id) => {
+    addFavourite: async (user_id, analysis_id, name = null) => {
         // Optional: check if the favourite already exists
         const { data: existing, error: fetchError } = await supabase
             .from("favourites")
@@ -11,52 +11,45 @@ module.exports = {
             .eq("analysis_id", analysis_id)
             .single();
 
-        if (fetchError && fetchError.code !== "PGRST116") throw fetchError; // other errors
-        if (existing) throw new Error("Favourite already exists");
+        if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+        if (existing) return existing;
 
-        // Insert favourite
+        // Insert favourite with name
         const { data, error } = await supabase
             .from("favourites")
-            .insert([{ user_id, analysis_id }])
-            .select(`*,
-                users:users(*),
-                analysis:analysis(*)
-                `);
-
-        if (error) throw error;
-        return data[0];
-    },
-
-    // Optional: get all favourites for a user
-    getFavourites: async (user_id) => {
-        const { data, error } = await supabase
-            .from("favourites")
-            .select(
-                `
-                *,
-                users:users(*),
-                analysis:analysis(*)
-                `
-            )
-            .eq("user_id", user_id);
+            .insert([{ 
+                user_id, 
+                analysis_id,
+                name: name || `Analysis ${new Date().toLocaleDateString()}`
+            }])
+            .select()
+            .single();
 
         if (error) throw error;
         return data;
     },
 
-    // Optional: remove a favourite
+    // Get all favourites for a user
+    getFavourites: async (user_id) => {
+        const { data, error } = await supabase
+            .from("favourites")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
     removeFavourite: async (user_id, analysis_id) => {
         const { data, error } = await supabase
             .from("favourites")
             .delete()
             .eq("user_id", user_id)
             .eq("analysis_id", analysis_id)
-            .select(`
-                *,
-                users:users(*),
-                analysis:analysis(*)
-                `);
+            .select();
+
         if (error) throw error;
-        return data[0];
+        return data;
     },
 };
