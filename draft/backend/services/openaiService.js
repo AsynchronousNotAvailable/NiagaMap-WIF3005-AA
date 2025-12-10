@@ -110,10 +110,7 @@ Always return a clean, parsable JSON object.
   return response.choices[0].message.content;
 }
 
-async function generateReasoning({ userIntent, center, recommendations, category, weights }) {
-  const { OpenAI } = require("openai");
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
+async function generateLocationReasoning({ locations, category, weights, referencePoint }) {
   // Helper to get top weighted indicators
   const sortedWeights = Object.entries(weights || {})
     .sort(([, a], [, b]) => b - a)
@@ -124,40 +121,66 @@ async function generateReasoning({ userIntent, center, recommendations, category
     : "balanced indicators";
 
   const REASONING_SYSTEM_PROMPT = `
-You are a GIS assistant in Malaysia helping businesses choose ideal locations.
+You are a professional GIS business location analyst in Malaysia. Your role is to explain why each recommended location is suitable for the user's ${category} business.
 
 You are given:
-- User's business intent and selected category: "${category}"
-- Priority indicators: ${topIndicators}
-- A central coordinate
-- 3 recommended coordinates with suitability scores
+- Business category: "${category}"
+- User's priority indicators: ${topIndicators}
+- Reference point: ${referencePoint?.name || "User's selected location"}
+- Top 3 recommended locations with:
+  * Total suitability score (0-100, higher is better)
+  * Breakdown scores for 5 key indicators:
+    - Demand: Population density and customer potential
+    - POI: Nearby points of interest and complementary businesses
+    - Risk: Safety from floods, landslides, and other hazards (higher = safer)
+    - Accessibility: Road network connectivity and transportation access
+    - Zoning: Land use compatibility and regulatory compliance
 
-Your task is to explain WHY each location is recommended, considering:
-1. Its proximity to the central point (closer is better)
-2. Its suitability score (0-100, higher is better)
-3. Alignment with the selected business category: "${category}"
-4. The user's priority indicators: ${topIndicators}
+**Your Task:**
+For each location, provide a concise 2-3 sentence explanation that:
 
-Each explanation must be 1–2 sentences and must reference:
-- Distance from center ("very close", "moderately far", "farthest but viable")
-- Score interpretation ("excellent score", "strong score", "moderate score")
-- Why it suits the ${category} category
+1. **Interprets the total score** using these guidelines:
+   - 80-100: "Excellent location" / "Outstanding choice"
+   - 60-79: "Strong candidate" / "Highly suitable"
+   - 40-59: "Moderate potential" / "Viable option"
+   - 0-39: "Limited suitability" / "Consider alternatives"
 
-**Example reasoning formats:**
-- "This location is very close to your search center and has an excellent suitability score of 89.1, making it ideal for ${category} with strong ${topIndicators}."
-- "While moderately far from the center, this spot achieves a strong score of 82.5 due to high accessibility and good demand indicators, perfect for ${category}."
-- "This location balances distance and opportunity with a score of 76.3, offering good zoning compliance and low competition for your ${category} business."
+2. **Highlights the strongest indicators** (scores ≥15) that make this location attractive:
+   - Demand: "high customer demand", "strong population density", "excellent market potential"
+   - POI: "well-developed commercial area", "abundant nearby amenities", "strong business ecosystem"
+   - Risk: "very safe location", "minimal hazard risk", "excellent safety profile"
+   - Accessibility: "highly accessible", "excellent road connectivity", "strong transportation links"
+   - Zoning: "ideal zoning compliance", "perfect land use match", "suitable regulatory environment"
 
-Respond ONLY with a valid JSON array (no markdown backticks):
+3. **Addresses any concerns** if key indicators score low (<10):
+   - Demand: "limited customer base nearby"
+   - POI: "developing commercial area"
+   - Risk: "moderate safety considerations"
+   - Accessibility: "limited road access"
+   - Zoning: "zoning restrictions to consider"
 
+4. **Relates to business category**: Connect the scores to specific ${category} business needs
+
+**Style Guidelines:**
+- Be professional but conversational
+- Use positive framing even for moderate scores
+- Prioritize the user's weighted preferences
+- Avoid technical jargon
+- Be specific about WHY each indicator matters for ${category}
+
+**Example Output Format:**
 [
   {
     "lat": 3.123,
     "lon": 101.678,
-    "reason": "Your generated reasoning here..."
+    "score": 85.5,
+    "breakdown": { "demand": 18, "poi": 22, "risk": 16, "accessibility": 20, "zoning": 9.5 },
+    "reason": "This excellent location scores 85.5 due to outstanding POI density (22) and strong accessibility (20), making it ideal for a ${category} business with high foot traffic and easy customer access. The strong demand score (18) indicates robust market potential, though you may want to verify zoning compliance as it scores moderately at 9.5."
   },
   ...
 ]
+
+Return ONLY a valid JSON array with lat, lon, score, breakdown, and reason for each location. No markdown formatting.
 `;
 
   const response = await openai.chat.completions.create({
@@ -167,15 +190,14 @@ Respond ONLY with a valid JSON array (no markdown backticks):
       {
         role: "user",
         content: JSON.stringify({
-          userIntent,
-          center,
-          recommendations,
+          locations,
           category,
           weights,
+          referencePoint,
         }),
       },
     ],
-    temperature: 0.3,
+    temperature: 0.4,
   });
 
   // Strip markdown block if any
@@ -183,7 +205,7 @@ Respond ONLY with a valid JSON array (no markdown backticks):
   const match = content.match(/```json\s*([\s\S]*?)\s*```/i);
   if (match) content = match[1];
 
-  return content.trim();
+  return JSON.parse(content.trim());
 }
 
-module.exports = { askChatbot, generateReasoning };
+module.exports = { askChatbot, generateLocationReasoning };

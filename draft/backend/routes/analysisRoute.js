@@ -17,6 +17,7 @@ const zoningController = require('../controllers/zoningController');
 const riskController = require('../controllers/riskController');
 const workflowController = require('../controllers/workflowController');
 const arcgis = require("../services/arcgisServices");
+const { generateLocationReasoning } = require('../services/openaiService');
 
 // Token extractor: prefer "Authenticator", then "Authorization", then env ARC_API_KEY
 function extractToken(req) {
@@ -133,7 +134,7 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
         // Fetch reference point via analysis
         const { data: analysis, error: analysisError } = await supabase
             .from("analysis")
-            .select("reference_point_id")
+            .select("reference_point_id, chat_id")
             .eq("analysis_id", analysisId)
             .single();
         
@@ -156,8 +157,28 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
         }
         
         console.log("Found reference point:", referencePoint);
+
+        // Fetch chat conversation to get category and weights
+        const { data: conversation, error: convError } = await supabase
+            .from("conversation")
+            .select("user_prompt, bot_answer")
+            .eq("analysis_id", analysisId)
+            .single();
+
+        let category = "retail";
+        let weights = { demand: 20, poi: 20, risk: 20, accessibility: 20, zoning: 20 };
+
+        if (conversation && conversation.bot_answer) {
+            try {
+                const botData = JSON.parse(conversation.bot_answer);
+                category = botData.category || "retail";
+                weights = botData.weights || weights;
+            } catch (e) {
+                console.error("Failed to parse bot_answer:", e);
+            }
+        }
         
-        // Parse reason JSON strings (changed from breakdown)
+        // Parse breakdown JSON strings
         const formattedLocations = locations.map(loc => ({
             lat: loc.lat,
             lon: loc.lon,
@@ -166,9 +187,21 @@ router.get("/analysis/:analysisId/recommendations", async (req, res) => {
                 ? JSON.parse(loc.reason) 
                 : loc.reason
         }));
+
+        // Generate AI reasoning for locations
+        const locationsWithReasoning = await generateLocationReasoning({
+            locations: formattedLocations,
+            category,
+            weights,
+            referencePoint: {
+                lat: referencePoint.lat,
+                lon: referencePoint.lon,
+                name: referencePoint.name
+            }
+        });
         
         res.json({
-            locations: formattedLocations,
+            locations: locationsWithReasoning,
             referencePoint: {
                 lat: referencePoint.lat,
                 lon: referencePoint.lon,

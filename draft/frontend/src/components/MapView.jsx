@@ -415,26 +415,57 @@ const MapViewComponent = ({
 
         const referencePoint = data.referencePoint || data.reference_point;
 
-        locations.forEach((location) => {
+        console.log("Adding suitability markers:", { locations, referencePoint });
+
+        locations.forEach((location, index) => {
             const point = new Point({
                 latitude: location.lat,
                 longitude: location.lon,
             });
 
-            let content = `<b>Score:</b> ${location.score.toFixed(2)}<br>`;
-
-            if (location.breakdown) {
-                content += `<b>Breakdown:</b><br>`;
-                content += `- Demand: ${location.breakdown.demand?.toFixed(2) || 0}<br>`;
-                content += `- POI: ${location.breakdown.poi?.toFixed(2) || 0}<br>`;
-                content += `- Risk: ${location.breakdown.risk?.toFixed(2) || 0}<br>`;
-                content += `- Accessibility: ${location.breakdown.accessibility?.toFixed(2) || 0}<br>`;
-                content += `- Zoning: ${location.breakdown.zoning?.toFixed(2) || 0}<br>`;
+            // Parse breakdown if it's a string (from database)
+            let breakdown = location.breakdown;
+            if (typeof breakdown === 'string') {
+                try {
+                    breakdown = JSON.parse(breakdown);
+                } catch (e) {
+                    console.error("Failed to parse breakdown:", e);
+                    breakdown = null;
+                }
             }
 
+            console.log(`Location ${index + 1} breakdown:`, breakdown);
+            console.log(`Location ${index + 1} reasoning:`, location.reason);
+
+            // Build popup content
+            let content = `<div style="font-family: Arial, sans-serif; padding: 8px;">`;
+            content += `<p style="margin: 8px 0;"><b>📊 Total Score:</b> <span style="font-size: 18px; color: #1976d2; font-weight: bold;">${location.score.toFixed(2)}</span></p>`;
+
+            // Add AI-generated reasoning
+            if (location.reason) {
+                content += `<div style="background-color: #f5f5f5; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #1976d2;">`;
+                content += `<p style="margin: 0; font-style: italic; color: #333; line-height: 1.6;">${location.reason}</p>`;
+                content += `</div>`;
+            }
+
+            if (breakdown) {
+                content += `<hr style="margin: 12px 0; border: none; border-top: 1px solid #ddd;">`;
+                content += `<p style="margin: 8px 0 4px 0; font-weight: bold;">📈 Detailed Score Breakdown:</p>`;
+                content += `<div style="margin-left: 10px; line-height: 1.8;">`;
+                content += `<div>🛒 <b>Demand:</b> <span style="color: ${breakdown.demand >= 15 ? '#4caf50' : '#ff9800'}; font-weight: bold;">${(breakdown.demand || 0).toFixed(2)}</span></div>`;
+                content += `<div>📍 <b>POI:</b> <span style="color: ${breakdown.poi >= 15 ? '#2196f3' : '#ff9800'}; font-weight: bold;">${(breakdown.poi || 0).toFixed(2)}</span></div>`;
+                content += `<div>⚠️ <b>Risk:</b> <span style="color: ${breakdown.risk >= 15 ? '#4caf50' : '#ff9800'}; font-weight: bold;">${(breakdown.risk || 0).toFixed(2)}</span></div>`;
+                content += `<div>🚗 <b>Accessibility:</b> <span style="color: ${breakdown.accessibility >= 15 ? '#9c27b0' : '#ff9800'}; font-weight: bold;">${(breakdown.accessibility || 0).toFixed(2)}</span></div>`;
+                content += `<div>🏗️ <b>Zoning:</b> <span style="color: ${breakdown.zoning >= 15 ? '#795548' : '#ff9800'}; font-weight: bold;">${(breakdown.zoning || 0).toFixed(2)}</span></div>`;
+                content += `</div>`;
+            }
+
+            content += `<hr style="margin: 12px 0; border: none; border-top: 1px solid #ddd;">`;
+            content += `<p style="margin: 8px 0 4px 0; font-weight: bold;">🗺️ View on Map:</p>`;
             content += `<div style="display: flex; gap: 10px; margin-top: 6px;">`;
-            content += `<a href="https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}" target="_blank" style="text-decoration: underline; color: #1976d2;">🌍 Google Maps</a>`;
-            content += `<a href="https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lon}#map=19/${location.lat}/${location.lon}" target="_blank" style="text-decoration: underline; color: #1976d2;">🗺️ OSM</a>`;
+            content += `<a href="https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}" target="_blank" style="text-decoration: none; padding: 6px 12px; background-color: #1976d2; color: white; border-radius: 4px; font-size: 12px;">🌍 Google Maps</a>`;
+            content += `<a href="https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lon}#map=19/${location.lat}/${location.lon}" target="_blank" style="text-decoration: none; padding: 6px 12px; background-color: #4caf50; color: white; border-radius: 4px; font-size: 12px;">🗺️ OpenStreetMap</a>`;
+            content += `</div>`;
             content += `</div>`;
 
             const marker = new Graphic({
@@ -446,7 +477,7 @@ const MapViewComponent = ({
                     height: "48px",
                 },
                 popupTemplate: {
-                    title: "Recommended Location",
+                    title: `📍 Recommended Location #${index + 1}`,
                     content: content,
                 },
             });
@@ -467,12 +498,15 @@ const MapViewComponent = ({
                     type: "simple-marker",
                     style: "cross",
                     color: [0, 120, 255],
-                    size: 14,
+                    size: 16,
                     outline: { color: [0, 80, 200], width: 4 },
                 },
                 popupTemplate: {
-                    title: "Reference Point",
-                    content: `Address: ${referencePoint.name || "Reference Location"}`,
+                    title: "📌 Reference Point",
+                    content: `<div style="font-family: Arial, sans-serif;">
+                        <p style="margin: 8px 0;"><b>Location:</b> ${referencePoint.name || "Reference Location"}</p>
+                        <p style="margin: 8px 0;"><b>Coordinates:</b> ${referencePoint.lat.toFixed(6)}, ${referencePoint.lon.toFixed(6)}</p>
+                    </div>`,
                 },
             });
 
@@ -484,7 +518,19 @@ const MapViewComponent = ({
             const targetPoints = locations.map(
                 (loc) => new Point({ latitude: loc.lat, longitude: loc.lon })
             );
-            view.goTo(targetPoints, { zoom: 15 }).catch(console.error);
+            
+            // Add reference point to the view extent if it exists
+            if (referencePoint) {
+                targetPoints.push(new Point({ 
+                    latitude: referencePoint.lat, 
+                    longitude: referencePoint.lon 
+                }));
+            }
+            
+            view.goTo(targetPoints, { 
+                duration: 1000,
+                easing: "ease-in-out"
+            }).catch(console.error);
         }
     };
 
