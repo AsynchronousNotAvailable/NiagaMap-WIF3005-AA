@@ -167,6 +167,8 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
 
       console.log("Got conversation_id:", conversationId);
 
+      let analysisId = null; // Track analysisId
+
       // Step 3: Call analysis workflow instead of suitability
       if ((botResult.location || botResult.nearbyMe) && botResult.category) {
         let currentLocation = null;
@@ -226,9 +228,9 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
 
         console.log("Workflow results:", analysisResults);
 
-        // Step 4: Update conversation with analysis_id (but don't save reasoning as message)
+        // Step 4: Update conversation with analysis_id
         if (analysisResults && analysisResults.length > 0) {
-          const analysisId = analysisResults[0].hexagon.analysis_id;
+          analysisId = analysisResults[0].hexagon.analysis_id;
           
           console.log("Updating conversation", conversationId, "with analysis_id", analysisId);
 
@@ -253,7 +255,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
           if (onShowRecommendations) {
             const topLocations = analysisResults
               .sort((a, b) => b.finalScore - a.finalScore)
-              .slice(0, 3)
+              .slice(0, 10)
               .map(r => ({
                 lat: r.centroid.lat,
                 lon: r.centroid.lon,
@@ -276,9 +278,16 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
             onShowRecommendations(topLocations, referencePoint);
           }
         }
-
-        fetchConversation(selectedChat);
       }
+
+      // Refresh conversation to show the button
+      // Instead of fetchConversation which might not have analysisId yet,
+      // manually add the message with analysisId to local state
+      setConversation(prev => [...prev, {
+        user_prompt: enrichedMessage,
+        bot_answer: JSON.stringify(botResult),
+        analysisId: analysisId // Add analysisId here
+      }]);
 
       setSelectedFile(null);
       setInput("");

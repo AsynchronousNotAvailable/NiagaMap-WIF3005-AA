@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require("express");
 const router = express.Router();
 const sql = require("mssql");
+const supabase = require("../supabase/supabase_client"); // Add this import
 const {
     getUserAnalysesWithDetails,
     updateAnalysisReferencePoint,
@@ -110,25 +111,73 @@ router.delete("/analysis/:analysisId", async (req, res) => {
 
 // New: Get top 3 recommended locations for an analysisId
 router.get("/analysis/:analysisId/recommendations", async (req, res) => {
-    const { analysisId } = req.params;
     try {
-        const result = await sql.query`
-            SELECT TOP 3 locationId, lat, lon, score, reason
-            FROM RecommendedLocation
-            WHERE analysisId = ${analysisId}
-            ORDER BY score DESC
-        `;
-
-        //get reference point details
-        const refPointResult = await sql.query`
-            SELECT rp.name, rp.lat, rp.lon
-            FROM Analysis a
-            JOIN ReferencePoint rp ON a.referencePointId = rp.pointId
-            WHERE a.analysisId = ${analysisId}
-        `;
-        res.json({ locations: result.recordset, referencePoint: refPointResult.recordset[0] });
-    } catch (err) {
-        res.status(500).json({ error: "Failed to fetch recommendations" });
+        const { analysisId } = req.params;
+        
+        console.log("Fetching recommendations for analysis:", analysisId);
+        
+        // Fetch recommended locations from Supabase
+        const { data: locations, error: locError } = await supabase
+            .from("recommended_location")
+            .select("*")
+            .eq("analysis_id", analysisId)
+            .order("score", { ascending: false });
+        
+        if (locError) {
+            console.error("Error fetching locations:", locError);
+            throw locError;
+        }
+        
+        console.log("Found locations:", locations);
+        
+        // Fetch reference point via analysis
+        const { data: analysis, error: analysisError } = await supabase
+            .from("analysis")
+            .select("reference_point_id")
+            .eq("analysis_id", analysisId)
+            .single();
+        
+        if (analysisError) {
+            console.error("Error fetching analysis:", analysisError);
+            throw analysisError;
+        }
+        
+        console.log("Found analysis:", analysis);
+        
+        const { data: referencePoint, error: refError } = await supabase
+            .from("reference_point")
+            .select("*")
+            .eq("point_id", analysis.reference_point_id)
+            .single();
+        
+        if (refError) {
+            console.error("Error fetching reference point:", refError);
+            throw refError;
+        }
+        
+        console.log("Found reference point:", referencePoint);
+        
+        // Parse reason JSON strings (changed from breakdown)
+        const formattedLocations = locations.map(loc => ({
+            lat: loc.lat,
+            lon: loc.lon,
+            score: loc.score,
+            breakdown: typeof loc.reason === 'string' 
+                ? JSON.parse(loc.reason) 
+                : loc.reason
+        }));
+        
+        res.json({
+            locations: formattedLocations,
+            referencePoint: {
+                lat: referencePoint.lat,
+                lon: referencePoint.lon,
+                name: referencePoint.name
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching recommendations:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 

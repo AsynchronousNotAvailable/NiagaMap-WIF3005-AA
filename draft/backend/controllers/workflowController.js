@@ -263,12 +263,29 @@ async function runWorkflow(opts = {}) {
         try {
             for (const location of topLocations) {
                 const centroid = location.centroid || { lat: center_y, lon: center_x };
+
+                // Helper to safely extract score
+                const getScore = (scoreObj) => {
+                    if (!scoreObj || !scoreObj.scores || !Array.isArray(scoreObj.scores)) return 0;
+                    const found = scoreObj.scores.find(s => s.centroid?.lat === centroid.lat);
+                    return found?.score || 0;
+                };
+
+                // Build breakdown object with individual scores
+                const breakdown = {
+                    demand: getScore(location.demandScore),
+                    poi: getScore(location.poiScore),
+                    risk: getScore(location.riskScore),
+                    accessibility: getScore(location.accessibilityScore),
+                    zoning: getScore(location.zoningScore)
+                };
+
                 await recommendedLocationService.saveRecommendedLocation(
                     newAnalysisId,
                     centroid.lat,
                     centroid.lon,
                     location.finalScore,
-                    "reason"
+                    JSON.stringify(breakdown) // Save breakdown as JSON string
                 );
             }
         } catch (error) {

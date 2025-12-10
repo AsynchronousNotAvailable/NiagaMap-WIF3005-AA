@@ -1,5 +1,6 @@
 const sql = require("mssql");
-const supabase = require("../supabase/supabase_client"); // adjust your path
+const supabase = require("../supabase/supabase_client");
+
 async function createRecommendedLocations(locations, analysisId) {
     const transaction = new sql.Transaction();
     try {
@@ -29,17 +30,36 @@ async function createRecommendedLocations(locations, analysisId) {
     }
 }
 
-async function saveRecommendedLocation(analysisId, lat, lon, score, reason) {
+async function saveRecommendedLocation(analysisId, lat, lon, score, breakdown) {
     try {
-        await supabase.from("recommended_location").insert({
+        console.log("Attempting to save recommended location:", {
             analysis_id: analysisId,
-            lat: lat,
-            lon: lon,
-            score: score,
-            reason: reason,
+            lat,
+            lon,
+            score,
+            breakdown
         });
+
+        const { data, error } = await supabase
+            .from("recommended_location")
+            .insert({
+                analysis_id: analysisId,
+                lat: lat,
+                lon: lon,
+                score: score,
+                reason: breakdown, // Changed from 'breakdown' to 'reason'
+            })
+            .select();
+
+        if (error) {
+            console.error("Supabase insert error:", error);
+            throw error;
+        }
+
+        console.log("Successfully saved location:", data);
+        return data;
     } catch (error) {
-        console.error("Error saving recommended location:", error);
+        console.error("Error in saveRecommendedLocation:", error);
         throw error;
     }
 }

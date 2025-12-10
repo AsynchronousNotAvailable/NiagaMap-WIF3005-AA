@@ -402,33 +402,39 @@ const MapViewComponent = ({
         }
     };
 
-    const addSuitabilityMarkers = (locations) => {
+    const addSuitabilityMarkers = (data) => {
         if (!esriModules || !placesLayerRef.current) return;
 
         const { Graphic, Point } = esriModules;
         placesLayerRef.current.removeAll();
 
         // Handle both array and object structures
-        const locationsArray = Array.isArray(locations)
-            ? locations
-            : locations.recommended_locations || [];
+        const locations = Array.isArray(data)
+            ? data
+            : (data.locations || data.recommended_locations || []);
 
-        locationsArray.forEach(({ lat, lon, score, breakdown }) => {
-            const point = new Point({ latitude: lat, longitude: lon });
+        const referencePoint = data.referencePoint || data.reference_point;
 
-            // Build content string without nested template literals
-            let content = `<b>Score:</b> ${score.toFixed(2)}<br>`;
-            
-            if (breakdown) {
+        locations.forEach((location) => {
+            const point = new Point({
+                latitude: location.lat,
+                longitude: location.lon,
+            });
+
+            let content = `<b>Score:</b> ${location.score.toFixed(2)}<br>`;
+
+            if (location.breakdown) {
                 content += `<b>Breakdown:</b><br>`;
-                content += `- Risk: ${breakdown.risk.toFixed(2)}<br>`;
-                content += `- Accessibility: ${breakdown.accessibility.toFixed(2)}<br>`;
-                content += `- Zoning: ${breakdown.zoning.toFixed(2)}<br>`;
+                content += `- Demand: ${location.breakdown.demand?.toFixed(2) || 0}<br>`;
+                content += `- POI: ${location.breakdown.poi?.toFixed(2) || 0}<br>`;
+                content += `- Risk: ${location.breakdown.risk?.toFixed(2) || 0}<br>`;
+                content += `- Accessibility: ${location.breakdown.accessibility?.toFixed(2) || 0}<br>`;
+                content += `- Zoning: ${location.breakdown.zoning?.toFixed(2) || 0}<br>`;
             }
-            
+
             content += `<div style="display: flex; gap: 10px; margin-top: 6px;">`;
-            content += `<a href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; color: #1976d2;">🌍 Google Maps</a>`;
-            content += `<a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=19/${lat}/${lon}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; color: #1976d2;">🗺️ OSM</a>`;
+            content += `<a href="https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lon}" target="_blank" style="text-decoration: underline; color: #1976d2;">🌍 Google Maps</a>`;
+            content += `<a href="https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lon}#map=19/${location.lat}/${location.lon}" target="_blank" style="text-decoration: underline; color: #1976d2;">🗺️ OSM</a>`;
             content += `</div>`;
 
             const marker = new Graphic({
@@ -439,7 +445,6 @@ const MapViewComponent = ({
                     width: "48px",
                     height: "48px",
                 },
-                attributes: { score },
                 popupTemplate: {
                     title: "Recommended Location",
                     content: content,
@@ -450,7 +455,6 @@ const MapViewComponent = ({
         });
 
         // Add reference point marker
-        const referencePoint = locations.reference_point || locations.referencePoint;
         if (referencePoint) {
             const refPoint = new Point({
                 latitude: referencePoint.lat,
@@ -476,9 +480,9 @@ const MapViewComponent = ({
         }
 
         // Zoom to show all markers
-        if (locationsArray.length > 0 && view) {
-            const targetPoints = locationsArray.map(
-                ({ lat, lon }) => new Point({ latitude: lat, longitude: lon })
+        if (locations.length > 0 && view) {
+            const targetPoints = locations.map(
+                (loc) => new Point({ latitude: loc.lat, longitude: loc.lon })
             );
             view.goTo(targetPoints, { zoom: 15 }).catch(console.error);
         }
