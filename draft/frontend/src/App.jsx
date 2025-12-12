@@ -10,6 +10,7 @@ import { auth } from "./firebase";
 import "./App.css";
 import api from "./api/api";
 import AnalysesPage from "./components/Analysis";
+import Profile from "./components/Profile";
 
 
 function ProtectedRoute({ children }) {
@@ -300,6 +301,32 @@ function App() {
                 >
                   Analysis
                 </Link>
+
+                <Link
+                  to="/profile"
+                  style={{
+                    color: isActive("/profile") ? "#fff" : "#1976d2",
+                    background: isActive("/profile") ? "#1976d2" : "transparent",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    padding: "10px 18px",
+                    borderRadius: 8,
+                    transition: "all 0.2s",
+                    boxShadow: isActive("/profile") ? "0 2px 8px rgba(25, 118, 210, 0.3)" : "none",
+                  }}
+                  onMouseOver={(e) => {
+                    if (!isActive("/profile")) {
+                      e.currentTarget.style.background = "#f0f7ff";
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!isActive("/profile")) {
+                      e.currentTarget.style.background = "transparent";
+                    }
+                  }}
+                >
+                  Profile
+                </Link>
               </>
             )}
           </div>
@@ -457,6 +484,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <AnalysesPage darkMode={darkMode} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
               </ProtectedRoute>
             }
           />
