@@ -1,8 +1,11 @@
 const defineHex = require('../utils/defineHexagons');
 const supabase = require("../supabase/supabase_client");
 async function fetchPopulationsForHexagons(hexagonArray, token, options = {}) {
+    // If maxCount is not provided or is null, process all hexagons
+    const maxCount = options.maxCount == null ? hexagonArray.length : Math.max(0, Math.floor(options.maxCount));
+    
     const opts = Object.assign({ country: 'MY', dataCollections: ['KeyFacts'], retry: 2, delayMs: 250}, options);
-    const responses = await defineHex.enrichHexagons(hexagonArray, { token, country: opts.country, dataCollections: opts.dataCollections, retry: opts.retry, delayMs: opts.delayMs, maxCount: hexagonArray.length});
+    const responses = await defineHex.enrichHexagons(hexagonArray, { token, country: opts.country, dataCollections: opts.dataCollections, retry: opts.retry, delayMs: opts.delayMs, maxCount});
 
     let pops_array = [];
     pops_array = responses.map((r) => (r.pop !== undefined ? r.pop : null));

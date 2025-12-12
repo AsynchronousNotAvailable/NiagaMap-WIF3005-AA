@@ -45,9 +45,9 @@ async function runWorkflow(opts = {}) {
         locationName,
         category,
         token = null,
-        maxCount = null,
-        chat_id = null,    // Changed from chatId
-        user_id = null,    // Changed from userId
+        maxCount = null,  // Keep as null by default - will generate all hexagons
+        chat_id = null,
+        user_id = null,
     } = opts;
 
     if (!category) {
@@ -60,13 +60,13 @@ async function runWorkflow(opts = {}) {
         throw new Error(
             "token is required for workflow (some controllers need it)"
         );
-    } else if (
-        maxCount != null &&
-        (!Number.isFinite(Number(maxCount)) ||
-            maxCount < 0 ||
-            !Number.isInteger(Number(maxCount)))
-    ) {
-        throw new Error("maxCount must be a non-negative integer if provided");
+    }
+    // Remove the strict validation for maxCount - allow null/undefined
+    // Only validate if maxCount is explicitly provided
+    if (maxCount != null && maxCount !== undefined) {
+        if (!Number.isFinite(Number(maxCount)) || maxCount < 0 || !Number.isInteger(Number(maxCount))) {
+            throw new Error("maxCount must be a non-negative integer if provided");
+        }
     } else if (
         !Number.isFinite(Number(center_x)) ||
         !Number.isFinite(Number(center_y))

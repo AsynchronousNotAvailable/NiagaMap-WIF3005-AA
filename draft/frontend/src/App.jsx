@@ -26,16 +26,34 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
-  const location = useLocation(); // ✅ Get current route
+  const location = useLocation();
   const [places, setPlaces] = useState([]);
   const [activeCategory, setActiveCategory] = useState("4d4b7105d754a06377d81259");
-    const [recommendedPlace, setRecommendedPlace] = useState(null);
-    const [darkMode, setDarkMode] = useState(false);
-
+  const [recommendedPlace, setRecommendedPlace] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
+  const [workflowResults, setWorkflowResults] = useState(null); // NEW: Add this state
 
   // New: Handler for recommendations from Chatbot
-  const handleShowRecommendations = (locations, referencePoint) => {
-    setRecommendedPlace({ recommended_locations: locations, reference_point: referencePoint });
+  const handleShowRecommendations = (locations, referencePoint, workflowData) => {
+    console.log("handleShowRecommendations called with:", {
+      locations,
+      referencePoint,
+      workflowData: workflowData?.length
+    });
+
+    // Set recommended place for markers
+    if (locations && referencePoint) {
+      setRecommendedPlace({ 
+        recommended_locations: locations, 
+        reference_point: referencePoint 
+      });
+    }
+    
+    // Set workflow results for hexagons
+    if (workflowData && workflowData.length > 0) {
+      console.log("Setting workflow results for hexagons:", workflowData);
+      setWorkflowResults(workflowData);
+    }
   };
 
   const [currentLocationCoordinate, setCurrentLocationCoordinate] =
@@ -159,6 +177,12 @@ function App() {
 
   };
   
+
+  // NEW: Handler to clear all results
+  const handleClearResults = () => {
+    setRecommendedPlace(null);
+    setWorkflowResults(null);
+  };
 
   // Helper function to check active route
   const isActive = (path) => location.pathname === path;
@@ -368,9 +392,10 @@ function App() {
                     <MapViewComponent
                       activeCategory={activeCategory}
                       onPlacesFound={handlePlacesFound}
-                      onPlaceSelect={handlePlaceSelect}
                       recommendedPlace={recommendedPlace}
-                      currentLocationCoordinate={currentLocationCoordinate}
+                      workflowResults={workflowResults}
+                      onPlaceSelect={handlePlaceSelect}
+                      onClearResults={handleClearResults}  // NEW: Add this prop
                       apiKey={apiKey}
                       darkMode={darkMode}
                     />

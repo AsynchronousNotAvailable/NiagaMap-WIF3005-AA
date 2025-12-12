@@ -54,6 +54,9 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   const debounceTimeout = useRef(null);
   const conversationRef = useRef(null);
 
+  // Add a ref to store workflow results by analysis ID
+  const workflowCache = useRef({});
+
   useEffect(() => {
     if (userId) {
       fetchChats();
@@ -246,7 +249,6 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
           currentLocation: currentLocation,
           nearbyMe: botResult.nearbyMe || false,
           category: CATEGORY_PRESETS[selectedCategory].label,
-          maxCount: 10,
           userId: userId,
           chatId: selectedChat,
           weights: normalizedWeights
@@ -263,6 +265,9 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         if (analysisResults && analysisResults.length > 0) {
           analysisId = analysisResults[0].hexagon.analysis_id;
           
+          // Cache the workflow results for later use
+          workflowCache.current[analysisId] = analysisResults;
+          
           console.log("Updating conversation", conversationId, "with analysis_id", analysisId);
 
           await axios.patch(`${API}/conversations/${conversationId}`, {
@@ -278,12 +283,15 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
 
             console.log("Fetched recommendations with reasoning:", { locations, referencePoint });
 
-            // Trigger map update with AI-generated recommendations
+            // Trigger map update with AI-generated recommendations AND workflow results (hexagons)
             if (onShowRecommendations) {
-              onShowRecommendations(locations, referencePoint);
+              onShowRecommendations(locations, referencePoint, analysisResults);
             }
           } catch (recError) {
             console.error("Error fetching recommendations:", recError);
+            if (onShowRecommendations) {
+              onShowRecommendations(null, null, analysisResults);
+            }
             alert("Analysis completed but failed to load recommendations. Please click 'View Locations on Map' button.");
           }
         }
@@ -308,16 +316,40 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   };
 
   const handleShowRecommendations = async (analysisId) => {
-    if (!analysisId) return;
     try {
-      const res = await api.get(`/analysis/${analysisId}/recommendations`);
-      const locations = res.data.locations || [];
-      const referencePoint = res.data.referencePoint || null;
-      if (onShowRecommendations) {
-        onShowRecommendations(locations, referencePoint);
+      // First, check if we have cached workflow results
+      let workflowData = workflowCache.current[analysisId];
+      
+      // If not cached, fetch from the recommended_location table
+      if (!workflowData) {
+        console.log("No cached workflow data, fetching from recommendations...");
+        
+        // Fetch recommendations (which we know exists)
+        const recsResponse = await axios.get(`${API}/analysis/${analysisId}/recommendations`);
+        const { locations, referencePoint } = recsResponse.data;
+        
+        console.log("Fetched recommendations:", { locations, referencePoint });
+        
+        // Pass only recommendations (no hexagons) if workflow data isn't cached
+        if (onShowRecommendations) {
+          onShowRecommendations(locations, referencePoint, null);
+        }
+        return;
       }
-    } catch (err) {
-      alert("Failed to fetch recommendations.");
+      
+      console.log("Using cached workflow results:", workflowData);
+      
+      // Fetch recommendations with reasoning
+      const recsResponse = await axios.get(`${API}/analysis/${analysisId}/recommendations`);
+      const { locations, referencePoint } = recsResponse.data;
+      
+      // Pass all three: locations, referencePoint, and full workflowData
+      if (onShowRecommendations) {
+        onShowRecommendations(locations, referencePoint, workflowData);
+      }
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+      alert("Failed to load recommendations. Please try again.");
     }
   };
 

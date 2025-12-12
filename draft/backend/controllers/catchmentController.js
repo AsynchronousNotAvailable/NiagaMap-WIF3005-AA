@@ -28,13 +28,18 @@ async function runCatchment(opts = {}) {
     const settings = catchmentService.getSettingsForCategory(category);
     const hexagons = catchmentService.generateCatchmentHexagons(center_x, center_y, radius, settings.sideLength);
 
-    // Optionally limit count
-    const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount))) ? hexagons.slice(0, Number(maxCount)) : hexagons;
+    // Don't limit hexagons - use all generated within radius
+    // Only apply maxCount if explicitly provided and greater than 0
+    const limitedHexagons = (maxCount && Number.isFinite(Number(maxCount)) && Number(maxCount) > 0) 
+        ? hexagons.slice(0, Number(maxCount)) 
+        : hexagons;
+
+    console.log(`Generated ${hexagons.length} hexagons, using ${limitedHexagons.length}`);
 
     const centroids = limitedHexagons.map(h => polygonCentroid(h));
-    let hexagon_objects = []; //contains hexagon objects saved to database (hex_id, ring, analysis_id, index)
+    let hexagon_objects = [];
+    
     try {
-        //save hexagons to database
         for (let i = 0; i < limitedHexagons.length; i++) {
             const savedHexagon = await catchmentService.saveSingleHexagonToDatabase(limitedHexagons[i], i, opts.analysisId);
             hexagon_objects.push(savedHexagon);
@@ -44,7 +49,6 @@ async function runCatchment(opts = {}) {
         throw new Error("Failed to save hexagons to database", error);
     }
 
-    
     return {
         hexagons: hexagon_objects,
         centroids,
