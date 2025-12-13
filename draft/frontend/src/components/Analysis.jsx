@@ -36,7 +36,11 @@ const Analysis = ({darkMode = false}) => {
                 new Set(allAnalyses.map((a) => a.chatId))
             );
             const uniqueRefNames = Array.from(
-                new Set(allAnalyses.map((a) => a.referencePoint.name))
+                new Set(
+                    allAnalyses
+                        .map((a) => a.referencePoint?.name)
+                        .filter((name) => name != null)
+                )
             );
 
             setChatIds(uniqueChatIds);
@@ -66,9 +70,9 @@ const Analysis = ({darkMode = false}) => {
     const openUpdateModal = (analysis) => {
         setSelectedAnalysis(analysis);
         setFormData({
-            name: analysis.referencePoint.name,
-            lat: analysis.referencePoint.lat,
-            lon: analysis.referencePoint.lon,
+            name: analysis.referencePoint?.name || "",
+            lat: analysis.referencePoint?.lat || "",
+            lon: analysis.referencePoint?.lon || "",
         });
         setShowModal(true);
     };
@@ -94,7 +98,7 @@ const Analysis = ({darkMode = false}) => {
                 selectedChatId === "all" || a.chatId === selectedChatId;
             const refMatch =
                 selectedRefName === "all" ||
-                a.referencePoint.name === selectedRefName;
+                (a.referencePoint && a.referencePoint.name === selectedRefName);
             const dateMatch =
                 !selectedDate ||
                 (() => {
@@ -256,18 +260,14 @@ const Analysis = ({darkMode = false}) => {
                             <h2 className="text-xl font-semibold">
                                 📍 Reference Point:{" "}
                                 <span
-                                    className={
-                                        darkMode
-                                            ? "text-[#90caf9]"
-                                            : "text-[#1976d2]"
-                                    }
+                                    className={darkMode ? "text-[#90caf9]" : "text-[#1976d2]"}
                                 >
-                                    {analysis.referencePoint.name}
+                                    {analysis.referencePoint?.name || <span className="text-gray-400 italic">No reference</span>}
                                 </span>
                             </h2>
                             <p className={`text-sm ${label}`}>
-                                Lat: {analysis.referencePoint.lat}, Lon:{" "}
-                                {analysis.referencePoint.lon}
+                                Lat: {analysis.referencePoint?.lat ?? <span className="text-gray-400 italic">N/A</span>}, Lon:{" "}
+                                {analysis.referencePoint?.lon ?? <span className="text-gray-400 italic">N/A</span>}
                             </p>
                             <p className="text-sm text-gray-500">
                                 Chat ID: {analysis.chatId}
