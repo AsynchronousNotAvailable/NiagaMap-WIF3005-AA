@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 
 const Analysis = ({darkMode = false}) => {
     const { user } = useAuth();
+    const { showToast } = useToast();
      // Assuming from context
     const userId = user?.uid;
 
@@ -61,9 +63,10 @@ const Analysis = ({darkMode = false}) => {
             setAnalyses((prev) =>
                 prev.filter((a) => a.analysisId !== analysisId)
             );
+            showToast("Analysis deleted successfully!", "success");
         } catch (err) {
             console.error("Failed to delete analysis:", err);
-            alert("Delete failed.");
+            showToast("Failed to delete analysis.", "error");
         }
     };
 
@@ -86,9 +89,10 @@ const Analysis = ({darkMode = false}) => {
             );
             setShowModal(false);
             fetchAnalyses();
+            showToast("Analysis updated successfully!", "success");
         } catch (err) {
             console.error("Failed to update:", err);
-            alert("Update failed.");
+            showToast("Failed to update analysis.", "error");
         }
     };
 

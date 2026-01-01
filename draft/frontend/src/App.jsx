@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Routes, Route, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { useToast } from "./context/ToastContext";
 import Basemap from "./components/Esrimap";
 import MapViewComponent from "./components/MapView";
 import Chatbot from "./components/Chatbot";
@@ -51,6 +52,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   const location = useLocation();
+  const { showToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [activeCategory, setActiveCategory] = useState("4d4b7105d754a06377d81259");
   const [recommendedPlace, setRecommendedPlace] = useState(null);
@@ -161,7 +163,7 @@ function App() {
         }
       } catch (error) {
         console.error("Geolocation error:", error.message);
-        alert("Failed to access your location.");
+        showToast("Failed to access your location.", "error");
         return;
       }
     }
@@ -196,7 +198,7 @@ function App() {
       setRecommendedPlace(results);
     } catch (err) {
       console.error("Error calling suitability API:", err);
-      alert("Could not fetch recommended locations.");
+      showToast("Could not fetch recommended locations.", "error");
     }
 
   };

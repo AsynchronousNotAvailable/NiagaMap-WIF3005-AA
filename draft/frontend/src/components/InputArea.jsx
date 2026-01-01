@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { useToast } from "../context/ToastContext";
 
 function InputArea({
   selectedChat,
@@ -161,7 +162,7 @@ function InputArea({
                   </div>
                   {suggestion.score && (
                     <div style={{ fontSize: 11, color: darkMode ? "#64748b" : "#94a3b8" }}>
-                      Relevance: {Math.round(suggestion.score * 100)}%
+                      Relevance: {Math.round(suggestion.score)}%
                     </div>
                   )}
                 </div>

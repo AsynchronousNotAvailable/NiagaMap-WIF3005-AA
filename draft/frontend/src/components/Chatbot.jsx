@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import api from "../api/api";
 import ChatbotHeader from "./ChatbotHeader";
 import ChatSidebar from "./ChatSidebar";
@@ -24,6 +25,7 @@ import {
 function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false }) {
   const { user } = useAuth();
   const userId = user?.uid;
+  const { showToast } = useToast();
 
   // Chat state
   const [input, setInput] = useState("");
@@ -280,6 +282,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
             // Trigger map update with AI-generated recommendations AND workflow results (hexagons)
             if (onShowRecommendations) {
               onShowRecommendations(locations, referencePoint, analysisResults);
+              showToast("Analysis completed successfully! View results on map.", "success", 5000);
               // Auto-close chatbot after showing recommendations
               if (onClose) onClose();
             }
@@ -288,7 +291,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
             if (onShowRecommendations) {
               onShowRecommendations(null, null, analysisResults);
             }
-            alert("Analysis completed but failed to load recommendations. Please click 'View Locations on Map' button.");
+            showToast("Analysis completed but failed to load recommendations. Please click 'View Locations on Map' button.", "warning", 6000);
           }
         }
       }
@@ -305,7 +308,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
     } catch (err) {
       console.error("Chatbot error:", err);
       console.error("Error details:", err.response?.data);
-      alert(`Error: ${err.response?.data?.error || err.message}`);
+      showToast(err.response?.data?.error || err.message || "An error occurred", "error");
     } finally {
       setLoading(false);
     }
@@ -330,12 +333,13 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
       // Pass all three: locations, referencePoint, and full workflowData (hexagons)
       if (onShowRecommendations) {
         onShowRecommendations(locations, referencePoint, workflowData);
+        showToast("Loaded saved analysis successfully!", "success");
         // Auto-close chatbot after navigating to the map
         if (onClose) onClose();
       }
     } catch (error) {
       console.error("Error fetching recommendations:", error);
-      alert("Failed to load recommendations. Please try again.");
+      showToast("Failed to load recommendations. Please try again.", "error");
     }
   };
 
@@ -348,6 +352,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         await api.delete(`/favourites`, {
           data: { user_id: userId, analysis_id: analysisId }
         });
+        showToast("Removed from favourites", "info");
       } else {
         // Add to favourites with user's question
         await api.post(`/favourites`, {
@@ -355,11 +360,12 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
           analysis_id: analysisId,
           name: userPrompt || `Analysis ${new Date().toLocaleDateString()}`
         });
+        showToast("Added to favourites!", "success");
       }
       fetchFavourites();
     } catch (err) {
       console.error("Error toggling favourite:", err);
-      alert(err.response?.data?.error || "Failed to update favourites");
+      showToast(err.response?.data?.error || "Failed to update favourites", "error");
     }
   };
 
@@ -375,9 +381,10 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         data: { user_id: userId, analysis_id: analysisId }
       });
       fetchFavourites();
+      showToast("Removed from favourites", "info");
     } catch (err) {
       console.error("Error removing favourite:", err);
-      alert("Failed to remove favourite");
+      showToast("Failed to remove favourite", "error");
     }
   };
 
