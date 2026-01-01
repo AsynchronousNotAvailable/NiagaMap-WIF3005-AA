@@ -52,9 +52,22 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
   const [favourites, setFavourites] = useState([]);
   const [favouriteIds, setFavouriteIds] = useState(new Set());
 
+  // Enhanced Chat Features
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showTemplates, setShowTemplates] = useState(false);
   const messagesEndRef = useRef(null);
   const debounceTimeout = useRef(null);
   const conversationRef = useRef(null);
+
+  // Chat templates
+  const chatTemplates = [
+    { id: 1, text: "Find coffee shops near", icon: "☕", category: "retail" },
+    { id: 2, text: "Show restaurants with good ratings in", icon: "🍽️", category: "fnb" },
+    { id: 3, text: "Find gyms and sports facilities around", icon: "🏃", category: "sports" },
+    { id: 4, text: "Locate clinics and wellness centers near", icon: "🏥", category: "health" },
+    { id: 5, text: "Find car workshops and service centers in", icon: "🚗", category: "automotive" },
+    { id: 6, text: "Show parks and recreation areas around", icon: "🌳", category: "sports" }
+  ];
 
   useEffect(() => {
     if (userId) {
@@ -125,6 +138,20 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
     setSelectedChat(null);
     setConversation([]);
   };
+
+  // Template Selection
+  const handleTemplateSelect = (template) => {
+    setInput(template.text + " ");
+    setSelectedCategory(template.category);
+    setShowTemplates(false);
+  };
+
+  // Chat History Search
+  const filteredConversation = conversation.filter(msg => 
+    searchQuery === "" || 
+    msg.user_prompt?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    msg.bot_answer?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -444,9 +471,209 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+          {/* Enhanced Chat Controls */}
+          <div style={{
+            display: "flex",
+            gap: "14px",
+            padding: "16px 24px",
+            borderBottom: `2px solid ${darkMode ? "rgba(139, 92, 246, 0.25)" : "rgba(139, 92, 246, 0.15)"}`,
+            background: darkMode 
+              ? "linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)"
+              : "linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%)",
+            alignItems: "stretch"
+          }}>
+            {/* Chat History Search */}
+            <div style={{ flex: 1, position: "relative" }}>
+              <div style={{ position: "relative" }}>
+                <span style={{
+                  position: "absolute",
+                  left: "14px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: "18px",
+                  pointerEvents: "none",
+                  zIndex: 1
+                }}>
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 16px 12px 44px",
+                    borderRadius: 12,
+                    background: darkMode ? "rgba(26, 26, 46, 0.8)" : "#fff",
+                    border: `2px solid ${searchQuery ? "#8b5cf6" : darkMode ? "rgba(139, 92, 246, 0.3)" : "#e2e8f0"}`,
+                    color: darkMode ? "#fff" : "#1e293b",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    outline: "none",
+                    boxShadow: searchQuery ? "0 4px 12px rgba(139, 92, 246, 0.2)" : "none",
+                    transition: "all 0.3s ease"
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#8b5cf6";
+                    e.target.style.boxShadow = "0 4px 16px rgba(139, 92, 246, 0.25)";
+                  }}
+                  onBlur={(e) => {
+                    if (!searchQuery) {
+                      e.target.style.borderColor = darkMode ? "rgba(139, 92, 246, 0.3)" : "#e2e8f0";
+                      e.target.style.boxShadow = "none";
+                    }
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent",
+                      border: "none",
+                      color: darkMode ? "#94a3b8" : "#64748b",
+                      fontSize: "18px",
+                      cursor: "pointer",
+                      padding: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "color 0.2s ease"
+                    }}
+                    onMouseEnter={(e) => e.target.style.color = "#ef4444"}
+                    onMouseLeave={(e) => e.target.style.color = darkMode ? "#94a3b8" : "#64748b"}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Templates Button */}
+            <button
+              onClick={() => setShowTemplates(!showTemplates)}
+              style={{
+                padding: "12px 24px",
+                borderRadius: 12,
+                background: showTemplates 
+                  ? "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)"
+                  : darkMode ? "rgba(139, 92, 246, 0.2)" : "rgba(139, 92, 246, 0.12)",
+                border: `2px solid ${showTemplates ? "#8b5cf6" : darkMode ? "rgba(139, 92, 246, 0.4)" : "rgba(139, 92, 246, 0.25)"}`,
+                color: showTemplates ? "#fff" : "#8b5cf6",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                boxShadow: showTemplates ? "0 4px 16px rgba(139, 92, 246, 0.3)" : "none",
+                transition: "all 0.3s ease"
+              }}
+              onMouseEnter={(e) => {
+                if (!showTemplates) {
+                  e.target.style.background = "linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(99, 102, 241, 0.2) 100%)";
+                  e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow = "0 6px 20px rgba(139, 92, 246, 0.2)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!showTemplates) {
+                  e.target.style.background = darkMode ? "rgba(139, 92, 246, 0.2)" : "rgba(139, 92, 246, 0.12)";
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = "none";
+                }
+              }}
+            >
+              <span style={{ fontSize: "16px" }}>📋</span>
+              <span>Quick Templates</span>
+              <span style={{ fontSize: "12px" }}>{showTemplates ? "▲" : "▼"}</span>
+            </button>
+          </div>
+
+          {/* Templates Panel */}
+          {showTemplates && (
+            <div style={{
+              padding: "20px 24px",
+              background: darkMode 
+                ? "linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.1) 100%)"
+                : "linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.06) 100%)",
+              borderBottom: `2px solid ${darkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(139, 92, 246, 0.2)"}`,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "14px"
+            }}>
+              {chatTemplates.map(template => (
+                <button
+                  key={template.id}
+                  onClick={() => handleTemplateSelect(template)}
+                  style={{
+                    padding: "16px 18px",
+                    borderRadius: 12,
+                    background: darkMode 
+                      ? "linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(37, 37, 64, 0.8) 100%)"
+                      : "linear-gradient(135deg, #fff 0%, rgba(248, 250, 252, 0.9) 100%)",
+                    border: `2px solid ${darkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(139, 92, 246, 0.2)"}`,
+                    color: darkMode ? "#f1f5f9" : "#1e293b",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "all 0.3s ease",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: darkMode 
+                      ? "0 2px 8px rgba(0, 0, 0, 0.3)"
+                      : "0 2px 8px rgba(139, 92, 246, 0.1)"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = darkMode 
+                      ? "linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.2) 100%)"
+                      : "linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)";
+                    e.target.style.borderColor = "#8b5cf6";
+                    e.target.style.transform = "translateY(-3px)";
+                    e.target.style.boxShadow = darkMode
+                      ? "0 8px 24px rgba(139, 92, 246, 0.3)"
+                      : "0 8px 24px rgba(139, 92, 246, 0.25)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = darkMode
+                      ? "linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(37, 37, 64, 0.8) 100%)"
+                      : "linear-gradient(135deg, #fff 0%, rgba(248, 250, 252, 0.9) 100%)";
+                    e.target.style.borderColor = darkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(139, 92, 246, 0.2)";
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = darkMode
+                      ? "0 2px 8px rgba(0, 0, 0, 0.3)"
+                      : "0 2px 8px rgba(139, 92, 246, 0.1)";
+                  }}
+                >
+                  <span style={{ fontSize: "22px", flexShrink: 0 }}>{template.icon}</span>
+                  <span style={{ flex: 1 }}>{template.text}</span>
+                  <span style={{ 
+                    fontSize: "10px",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    background: darkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(139, 92, 246, 0.15)",
+                    color: "#8b5cf6",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px"
+                  }}>
+                    {template.category}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <ConversationArea
             ref={conversationRef}
-            conversation={conversation}
+            conversation={filteredConversation}
             handleShowRecommendations={handleShowRecommendations}
             handleToggleFavourite={handleToggleFavourite}
             favourites={favouriteIds}
