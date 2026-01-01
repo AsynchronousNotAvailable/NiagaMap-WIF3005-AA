@@ -11,6 +11,7 @@ const authRoutes = require("./routes/auth");
 const chatbotRoute = require("./routes/chatbot"); // This now handles everything
 const analysisRoute = require("./routes/analysisRoute");
 const favouriteRoutes = require("./routes/favouriteRoutes");
+const favoritesRoutes = require("./routes/favoritesRoutes"); // Collections, tags, notes, ratings
 // Initialize Supabase client
 try {
     const supabase = require("./supabase/supabase_client");
@@ -38,6 +39,7 @@ app.use("/chats", chatRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/auth", authRoutes);
 app.use("/favourites", favouriteRoutes);
+app.use("/api", favoritesRoutes); // Collections, tags, notes, ratings endpoints
 
 app.use(chatbotRoute); // Handles /api/chatbot and /api/chatbot/reasoning
 app.use(analysisRoute);

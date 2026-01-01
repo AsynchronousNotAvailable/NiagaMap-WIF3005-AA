@@ -4,6 +4,9 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import EmptyState from "./EmptyState";
 import SkeletonLoader from "./SkeletonLoader";
+import StarRating from "./StarRating";
+import TagBadge from "./TagBadge";
+import NotesModal from "./NotesModal";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -28,8 +31,18 @@ const Analysis = ({darkMode = false}) => {
     const [selectedAnalysis, setSelectedAnalysis] = useState(null);
     const [formData, setFormData] = useState({ name: "", lat: "", lon: "" });
 
+    // New states for tags, notes, ratings
+    const [allTags, setAllTags] = useState([]);
+    const [analysisTags, setAnalysisTags] = useState({});
+    const [analysisRatings, setAnalysisRatings] = useState({});
+    const [showNotesModal, setShowNotesModal] = useState(false);
+    const [selectedAnalysisForNotes, setSelectedAnalysisForNotes] = useState(null);
+    const [selectedTagFilter, setSelectedTagFilter] = useState("all");
+    const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
+
     useEffect(() => {
         fetchAnalyses();
+        fetchTags();
     }, []);
 
     const fetchAnalyses = async () => {
@@ -51,11 +64,128 @@ const Analysis = ({darkMode = false}) => {
 
             setChatIds(uniqueChatIds);
             setReferenceNames(uniqueRefNames);
+            
+            // Fetch tags and ratings for all analyses
+            await fetchAnalysisMetadata(allAnalyses);
         } catch (err) {
             console.error(err);
             setError("Failed to fetch analyses.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchTags = async () => {
+        try {
+            const response = await api.get(`/api/tags/${userId}`);
+            setAllTags(response.data.tags || []);
+        } catch (err) {
+            console.error('Error fetching tags:', err);
+        }
+    };
+
+    const fetchAnalysisMetadata = async (analysesList) => {
+        const tagsMap = {};
+        const ratingsMap = {};
+
+        await Promise.all(
+            analysesList.map(async (analysis) => {
+                try {
+                    // Fetch tags
+                    const tagsRes = await api.get(`/analyses/${analysis.analysisId}/tags`);
+                    tagsMap[analysis.analysisId] = tagsRes.data.tags || [];
+
+                    // Fetch rating
+                    const ratingRes = await api.get(`/analyses/${analysis.analysisId}/rating/${userId}`);
+                    if (ratingRes.data.rating) {
+                        ratingsMap[analysis.analysisId] = ratingRes.data.rating.rating;
+                    }
+                } catch (err) {
+                    console.error(`Error fetching metadata for ${analysis.analysisId}:`, err);
+                }
+            })
+        );
+
+        setAnalysisTags(tagsMap);
+        setAnalysisRatings(ratingsMap);
+    };
+
+    const handleRatingChange = async (analysisId, rating) => {
+        try {
+            await api.post(`/api/analyses/${analysisId}/rating/${userId}`, { rating });
+            setAnalysisRatings(prev => ({ ...prev, [analysisId]: rating }));
+            showToast('Rating saved!', 'success');
+        } catch (err) {
+            console.error('Error saving rating:', err);
+            showToast('Failed to save rating', 'error');
+        }
+    };
+
+    const handleRemoveTag = async (analysisId, tagId) => {
+        try {
+            await api.delete(`/api/analyses/${analysisId}/tags/${tagId}`);
+            setAnalysisTags(prev => ({
+                ...prev,
+                [analysisId]: prev[analysisId].filter(t => t.tagId !== tagId)
+            }));
+            showToast('Tag removed', 'success');
+        } catch (err) {
+            console.error('Error removing tag:', err);
+            showToast('Failed to remove tag', 'error');
+        }
+    };
+
+    const handleAddTag = async (analysisId, tagName, tagColor = '#3B82F6') => {
+        if (!tagName.trim()) return;
+        
+        try {
+            // Check if tag exists
+            let tag = allTags.find(t => t.name.toLowerCase() === tagName.toLowerCase());
+            
+            // If tag doesn't exist, create it
+            if (!tag) {
+                const createRes = await api.post(`/api/tags/${userId}`, { 
+                    name: tagName.trim(), 
+                    color: tagColor 
+                });
+                tag = { 
+                    tagId: createRes.data.tagId, 
+                    name: tagName.trim(), 
+                    color: tagColor 
+                };
+                setAllTags(prev => [...prev, tag]);
+            }
+            
+            // Add tag to analysis
+            await api.post(`/api/analyses/${analysisId}/tags/${tag.tagId}`);
+            
+            // Update local state
+            setAnalysisTags(prev => ({
+                ...prev,
+                [analysisId]: [...(prev[analysisId] || []), tag]
+            }));
+            
+            showToast('Tag added!', 'success');
+        } catch (err) {
+            if (err.response?.data?.error === 'Tag already added to analysis') {
+                showToast('Tag already added', 'warning');
+            } else {
+                console.error('Error adding tag:', err);
+                showToast('Failed to add tag', 'error');
+            }
+        }
+    };
+
+    const openNotesModal = (analysis) => {
+        setSelectedAnalysisForNotes(analysis);
+        setShowNotesModal(true);
+    };
+
+    const closeNotesModal = (saved) => {
+        setShowNotesModal(false);
+        setSelectedAnalysisForNotes(null);
+        if (saved) {
+            // Optionally refresh data
         }
     };
 
@@ -376,7 +506,22 @@ const Analysis = ({darkMode = false}) => {
                         created.getUTCDate() === selected.getUTCDate()
                     );
                 })();
-            return chatMatch && refMatch && dateMatch;
+            
+            // Rating filter
+            const ratingMatch = selectedRatingFilter === "all" || (() => {
+                const rating = analysisRatings[a.analysisId];
+                if (selectedRatingFilter === "unrated") return !rating;
+                const filterValue = parseInt(selectedRatingFilter);
+                return rating && rating >= filterValue;
+            })();
+            
+            // Tag filter
+            const tagMatch = selectedTagFilter === "all" || (() => {
+                const tags = analysisTags[a.analysisId] || [];
+                return tags.some(t => t.tagId === selectedTagFilter);
+            })();
+            
+            return chatMatch && refMatch && dateMatch && ratingMatch && tagMatch;
         });
 
         return filtered.sort((a, b) => {
@@ -622,6 +767,77 @@ const Analysis = ({darkMode = false}) => {
                                 <option value="asc">Oldest First</option>
                             </select>
                         </div>
+
+                        {/* Rating Filter */}
+                        <div style={{ flex: "1 1 200px" }}>
+                            <label style={{
+                                display: "block",
+                                marginBottom: 8,
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: darkMode ? "#94a3b8" : "#64748b",
+                            }}>
+                                Filter by Rating
+                            </label>
+                            <select
+                                value={selectedRatingFilter}
+                                onChange={(e) => setSelectedRatingFilter(e.target.value)}
+                                style={{
+                                    width: "100%",
+                                    padding: "12px 16px",
+                                    borderRadius: 12,
+                                    border: `2px solid ${darkMode ? "rgba(139, 92, 246, 0.2)" : "#e2e8f0"}`,
+                                    background: darkMode ? "#1a1a2e" : "#fff",
+                                    color: darkMode ? "#f1f5f9" : "#1e293b",
+                                    fontSize: 14,
+                                    cursor: "pointer",
+                                    transition: "all 0.25s ease",
+                                }}
+                                onFocus={(e) => e.target.style.borderColor = "#8B5CF6"}
+                                onBlur={(e) => e.target.style.borderColor = darkMode ? "rgba(139, 92, 246, 0.2)" : "#e2e8f0"}
+                            >
+                                <option value="all">All Ratings</option>
+                                <option value="5">⭐⭐⭐⭐⭐ (5 stars)</option>
+                                <option value="4">⭐⭐⭐⭐ (4+ stars)</option>
+                                <option value="3">⭐⭐⭐ (3+ stars)</option>
+                                <option value="unrated">Unrated</option>
+                            </select>
+                        </div>
+
+                        {/* Tag Filter */}
+                        <div style={{ flex: "1 1 200px" }}>
+                            <label style={{
+                                display: "block",
+                                marginBottom: 8,
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: darkMode ? "#94a3b8" : "#64748b",
+                            }}>
+                                Filter by Tag
+                            </label>
+                            <select
+                                value={selectedTagFilter}
+                                onChange={(e) => setSelectedTagFilter(e.target.value)}
+                                style={{
+                                    width: "100%",
+                                    padding: "12px 16px",
+                                    borderRadius: 12,
+                                    border: `2px solid ${darkMode ? "rgba(139, 92, 246, 0.2)" : "#e2e8f0"}`,
+                                    background: darkMode ? "#1a1a2e" : "#fff",
+                                    color: darkMode ? "#f1f5f9" : "#1e293b",
+                                    fontSize: 14,
+                                    cursor: "pointer",
+                                    transition: "all 0.25s ease",
+                                }}
+                                onFocus={(e) => e.target.style.borderColor = "#8B5CF6"}
+                                onBlur={(e) => e.target.style.borderColor = darkMode ? "rgba(139, 92, 246, 0.2)" : "#e2e8f0"}
+                            >
+                                <option value="all">All Tags</option>
+                                {allTags.map(tag => (
+                                    <option key={tag.tagId} value={tag.tagId}>{tag.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -702,8 +918,127 @@ const Analysis = ({darkMode = false}) => {
                                             {formatDateTime(analysis.createdAt)}
                                         </span>
                                     </div>
+                                    
+                                    {/* Star Rating */}
+                                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                                        <StarRating
+                                            rating={analysisRatings[analysis.analysisId] || 0}
+                                            onRate={(rating) => handleRatingChange(analysis.analysisId, rating)}
+                                            darkMode={darkMode}
+                                            size={18}
+                                        />
+                                        {analysisRatings[analysis.analysisId] && (
+                                            <span style={{ 
+                                                fontSize: 12, 
+                                                color: darkMode ? "#94a3b8" : "#64748b",
+                                                fontWeight: 500
+                                            }}>
+                                                ({analysisRatings[analysis.analysisId]}/5)
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Tags */}
+                                    {analysisTags[analysis.analysisId] && analysisTags[analysis.analysisId].length > 0 && (
+                                        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                            {analysisTags[analysis.analysisId].map(tag => (
+                                                <TagBadge
+                                                    key={tag.tagId}
+                                                    tag={tag}
+                                                    onRemove={(tagId) => handleRemoveTag(analysis.analysisId, tagId)}
+                                                    darkMode={darkMode}
+                                                    size="sm"
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Add Tag Input */}
+                                    <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Add tag..."
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                                    handleAddTag(analysis.analysisId, e.target.value);
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                maxWidth: 200,
+                                                padding: "6px 12px",
+                                                borderRadius: 8,
+                                                background: darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+                                                border: darkMode ? "1.5px solid rgba(255,255,255,0.1)" : "1.5px solid rgba(0,0,0,0.1)",
+                                                color: darkMode ? "#fff" : "#000",
+                                                fontSize: 12,
+                                                outline: "none",
+                                                transition: "all 0.2s ease"
+                                            }}
+                                            onFocus={(e) => {
+                                                e.target.style.borderColor = "#8b5cf6";
+                                                e.target.style.background = darkMode ? "rgba(139, 92, 246, 0.1)" : "rgba(139, 92, 246, 0.05)";
+                                            }}
+                                            onBlur={(e) => {
+                                                e.target.style.borderColor = darkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
+                                                e.target.style.background = darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
+                                            }}
+                                        />
+                                        <button
+                                            onClick={(e) => {
+                                                const input = e.target.previousElementSibling;
+                                                if (input.value.trim()) {
+                                                    handleAddTag(analysis.analysisId, input.value);
+                                                    input.value = '';
+                                                }
+                                            }}
+                                            style={{
+                                                padding: "6px 12px",
+                                                borderRadius: 8,
+                                                background: "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)",
+                                                color: "#fff",
+                                                border: "none",
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                transition: "all 0.2s ease",
+                                                whiteSpace: "nowrap"
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.transform = "translateY(-1px)"}
+                                            onMouseLeave={(e) => e.target.style.transform = "translateY(0)"}
+                                        >
+                                            + Tag
+                                        </button>
+                                    </div>
                                 </div>
-                                <div style={{ display: "flex", gap: 10 }}>
+                                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                    {/* Notes Button */}
+                                    <button
+                                        onClick={() => openNotesModal(analysis)}
+                                        style={{
+                                            padding: "10px 20px",
+                                            borderRadius: 10,
+                                            background: darkMode ? "rgba(251, 191, 36, 0.15)" : "rgba(251, 191, 36, 0.1)",
+                                            color: "#fbbf24",
+                                            border: "2px solid rgba(251, 191, 36, 0.3)",
+                                            fontWeight: 600,
+                                            fontSize: 13,
+                                            cursor: "pointer",
+                                            transition: "all 0.25s ease",
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = "rgba(251, 191, 36, 0.2)";
+                                            e.target.style.borderColor = "#fbbf24";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = darkMode ? "rgba(251, 191, 36, 0.15)" : "rgba(251, 191, 36, 0.1)";
+                                            e.target.style.borderColor = "rgba(251, 191, 36, 0.3)";
+                                        }}
+                                        title="Add/Edit Notes"
+                                    >
+                                        📝 Notes
+                                    </button>
                                     <button
                                         onClick={() => handleExportPDF(analysis)}
                                         style={{
@@ -1058,6 +1393,16 @@ const Analysis = ({darkMode = false}) => {
                             </form>
                         </div>
                     </div>
+                )}
+
+                {/* Notes Modal */}
+                {showNotesModal && selectedAnalysisForNotes && (
+                    <NotesModal
+                        analysis={selectedAnalysisForNotes}
+                        userId={userId}
+                        onClose={closeNotesModal}
+                        darkMode={darkMode}
+                    />
                 )}
             </div>
         </div>
