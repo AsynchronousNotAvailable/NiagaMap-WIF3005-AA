@@ -1,3 +1,5 @@
+import { useRef, useEffect } from "react";
+
 function InputArea({
   selectedChat,
   selectedFile,
@@ -11,8 +13,27 @@ function InputArea({
   showLocationDropdown,
   locationSuggestions,
   handleLocationSelect,
-  darkMode
+  darkMode,
+  setShowLocationDropdown
 }) {
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowLocationDropdown(false);
+      }
+    };
+
+    if (showLocationDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showLocationDropdown, setShowLocationDropdown]);
+
   return (
     <div
       style={{
@@ -96,7 +117,7 @@ function InputArea({
         />
 
         {/* Text Input with Location Dropdown */}
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div ref={dropdownRef} style={{ flex: 1, position: 'relative' }}>
           <textarea
             rows={1}
             value={input}
@@ -160,6 +181,7 @@ function InputArea({
                 <div
                   key={idx}
                   onClick={() => handleLocationSelect(suggestion)}
+                  
                   style={{
                     padding: "10px 14px",
                     cursor: "pointer",

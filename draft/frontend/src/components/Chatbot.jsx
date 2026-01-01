@@ -510,6 +510,7 @@ function Chatbot({ onExtracted, onClose, onShowRecommendations, darkMode = false
               showLocationDropdown={showLocationDropdown}
               locationSuggestions={locationSuggestions}
               handleLocationSelect={handleLocationSelect}
+              setShowLocationDropdown={setShowLocationDropdown}
               darkMode={darkMode}
             />
           </div>
