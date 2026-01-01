@@ -92,11 +92,11 @@ const Analysis = ({darkMode = false}) => {
             analysesList.map(async (analysis) => {
                 try {
                     // Fetch tags
-                    const tagsRes = await api.get(`/analyses/${analysis.analysisId}/tags`);
+                    const tagsRes = await api.get(`/api/analyses/${analysis.analysisId}/tags`);
                     tagsMap[analysis.analysisId] = tagsRes.data.tags || [];
 
                     // Fetch rating
-                    const ratingRes = await api.get(`/analyses/${analysis.analysisId}/rating/${userId}`);
+                    const ratingRes = await api.get(`/api/analyses/${analysis.analysisId}/rating/${userId}`);
                     if (ratingRes.data.rating) {
                         ratingsMap[analysis.analysisId] = ratingRes.data.rating.rating;
                     }
@@ -124,10 +124,18 @@ const Analysis = ({darkMode = false}) => {
     const handleRemoveTag = async (analysisId, tagId) => {
         try {
             await api.delete(`/api/analyses/${analysisId}/tags/${tagId}`);
+            
+            // Update local state immediately
             setAnalysisTags(prev => ({
                 ...prev,
                 [analysisId]: prev[analysisId].filter(t => t.tagId !== tagId)
             }));
+            
+            // If currently filtering by this tag, refresh to update the filtered list
+            if (selectedTagFilter && selectedTagFilter === tagId) {
+                await fetchAnalyses();
+            }
+            
             showToast('Tag removed', 'success');
         } catch (err) {
             console.error('Error removing tag:', err);
@@ -148,7 +156,8 @@ const Analysis = ({darkMode = false}) => {
                     name: tagName.trim(), 
                     color: tagColor 
                 });
-                tag = { 
+                // Use the returned tag object from backend
+                tag = createRes.data.tag || {
                     tagId: createRes.data.tagId, 
                     name: tagName.trim(), 
                     color: tagColor 

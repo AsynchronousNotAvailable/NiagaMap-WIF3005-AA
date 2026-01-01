@@ -10,7 +10,11 @@ const getTags = async (req, res) => {
         const { data: tags, error } = await supabase
             .from('tags')
             .select(`
-                *,
+                tag_id,
+                user_id,
+                name,
+                color,
+                created_at,
                 analysis_tags(count)
             `)
             .eq('user_id', userId)
@@ -18,9 +22,13 @@ const getTags = async (req, res) => {
         
         if (error) throw error;
         
-        // Format with usage count
+        // Format with camelCase and usage count
         const formattedTags = tags.map(t => ({
-            ...t,
+            tagId: t.tag_id,
+            userId: t.user_id,
+            name: t.name,
+            color: t.color,
+            createdAt: t.created_at,
             usageCount: t.analysis_tags?.[0]?.count || 0
         }));
         
@@ -60,7 +68,17 @@ const createTag = async (req, res) => {
             throw error;
         }
         
-        res.status(201).json({ tagId: data.tag_id, message: 'Tag created successfully' });
+        res.status(201).json({ 
+            tagId: data.tag_id,
+            tag: {
+                tagId: data.tag_id,
+                userId: data.user_id,
+                name: data.name,
+                color: data.color,
+                createdAt: data.created_at
+            },
+            message: 'Tag created successfully' 
+        });
     } catch (error) {
         console.error('Error creating tag:', error);
         res.status(500).json({ error: 'Failed to create tag' });
@@ -178,18 +196,28 @@ const getAnalysisTags = async (req, res) => {
             .from('analysis_tags')
             .select(`
                 tagged_at,
-                tags (*)
+                tags (
+                    tag_id,
+                    user_id,
+                    name,
+                    color,
+                    created_at
+                )
             `)
             .eq('analysis_id', analysisId)
             .order('tagged_at', { ascending: false });
         
         if (error) throw error;
         
-        // Flatten the response
-        const tags = data.map(item => ({
-            ...item.tags,
+        // Flatten and format the response with camelCase
+        const tags = (data || []).map(item => ({
+            tagId: item.tags?.tag_id,
+            userId: item.tags?.user_id,
+            name: item.tags?.name,
+            color: item.tags?.color,
+            createdAt: item.tags?.created_at,
             taggedAt: item.tagged_at
-        }));
+        })).filter(tag => tag.tagId); // Filter out any null/undefined tags
         
         res.json({ tags });
     } catch (error) {
