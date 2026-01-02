@@ -26,7 +26,12 @@ const app = express();
 app.use(express.json());
 app.use(
     cors({
-        origin: ["http://localhost:5173", "http://localhost:5174"],
+        origin: [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "https://niagamap.vercel.app",
+            "https://niagamap-b3a6zg47b-ing-zhens-projects.vercel.app"
+        ],
         credentials: true,
     })
 );
