@@ -67,7 +67,7 @@ const MapViewComponent = ({
         mapView = new MapView({
             container: mapRef.current,
             map: map,
-            center: [-118.46651, 33.98621],
+            center: [101.6129, 3.1073], // Longitude, Latitude for Petaling Jaya            
             zoom: 13,
         });
 
