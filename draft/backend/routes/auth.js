@@ -1,13 +1,33 @@
 const express = require("express");
 const admin = require("firebase-admin");
 const router = express.Router();
-const serviceAccount = require("../fyp-gis-24a89-firebase-adminsdk-fbsvc-faa0396f47.json");
 const userService = require("../services/userService");
 
+// Initialize Firebase Admin with environment variables or service account file
 if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-    });
+    let credential;
+    
+    // Check if FIREBASE_SERVICE_ACCOUNT_KEY environment variable exists (for deployment)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        try {
+            const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+            credential = admin.credential.cert(serviceAccount);
+        } catch (error) {
+            console.error('Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:', error);
+            process.exit(1);
+        }
+    } else {
+        // Fallback to local file for development
+        try {
+            const serviceAccount = require("../fyp-gis-24a89-firebase-adminsdk-fbsvc-faa0396f47.json");
+            credential = admin.credential.cert(serviceAccount);
+        } catch (error) {
+            console.error('Firebase service account not found. Please set FIREBASE_SERVICE_ACCOUNT_KEY environment variable.');
+            process.exit(1);
+        }
+    }
+    
+    admin.initializeApp({ credential });
 }
 
 router.post("/verify", async (req, res) => {
