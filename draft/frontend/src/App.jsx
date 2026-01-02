@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./context/ToastContext";
-import Basemap from "./components/Esrimap";
+import Basemap from "./components/EsriMap";
 import MapViewComponent from "./components/MapView";
 import Chatbot from "./components/Chatbot";
 import AuthPage from "./components/AuthPage";
